@@ -49,12 +49,10 @@
             margin-bottom: 25px;
             height: 380px !important; 
             position: relative;
-            /* Removido overflow:hidden para permitir que as legendas apareçam se necessário */
             display: flex;
             flex-direction: column;
         }
 
-        /* Garante que o gráfico ocupe o espaço corretamente sem vazar */
         canvas {
             max-width: 100% !important;
             max-height: 100% !important;
@@ -170,6 +168,7 @@
                             <th>Unidade</th>
                             <th>Tipo</th>
                             <th>Notificante</th>
+                            <th>Telefone (Notificado)</th>
                             <th>Status</th>
                             <th>Ações</th>
                         </tr>
@@ -189,6 +188,11 @@
                 </div>
                 <div class="modal-body">
                     <input type="hidden" id="editDocId">
+                    
+                    <div class="alert alert-secondary p-2 small">
+                        <strong>Contato do Notificado:</strong> <span id="infoTelefone">---</span>
+                    </div>
+
                     <div class="mb-3">
                         <label class="form-label fw-bold">Alterar Status</label>
                         <select id="editStatus" class="form-select">
@@ -298,7 +302,6 @@
             if (chartLinha) chartLinha.destroy();
             if (chartPizzaStatus) chartPizzaStatus.destroy();
 
-            // 1. Gráfico de Barras (Unidades)
             const unidadesMap = dados.reduce((acc, d) => {
                 acc[d.local_ocorrencia || 'N/I'] = (acc[d.local_ocorrencia || 'N/I'] || 0) + 1;
                 return acc;
@@ -313,7 +316,6 @@
                 options: { indexAxis: 'y', maintainAspectRatio: false, plugins: { legend: { display: false } } }
             });
 
-            // 2. Gráfico de Pizza (Status) - CORREÇÃO DE MARGEM REALIZADA AQUI
             const statusMap = dados.reduce((acc, d) => {
                 const s = d.status_processamento || 'PENDENTE';
                 acc[s] = (acc[s] || 0) + 1;
@@ -331,19 +333,16 @@
                 },
                 options: { 
                     maintainAspectRatio: false, 
-                    layout: {
-                        padding: { top: 10, bottom: 20, left: 10, right: 10 }
-                    },
+                    layout: { padding: { top: 10, bottom: 20, left: 10, right: 10 } },
                     plugins: { 
                         legend: { 
-                            position: 'bottom', // Mudado para bottom para ganhar espaço lateral
+                            position: 'bottom',
                             labels: { boxWidth: 12, font: { size: 11 } }
                         } 
                     } 
                 }
             });
 
-            // 3. Gráfico de Linha (Evolução)
             const datasMap = dados.reduce((acc, d) => {
                 if(d.data_ocorrencia) acc[d.data_ocorrencia] = (acc[d.data_ocorrencia] || 0) + 1;
                 return acc;
@@ -366,7 +365,6 @@
                 options: { maintainAspectRatio: false }
             });
 
-            // 4. Gráfico de Rosca (Categorias)
             const catMap = dados.reduce((acc, d) => {
                 acc[d.tipo_evento || 'Outros'] = (acc[d.tipo_evento || 'Outros'] || 0) + 1;
                 return acc;
@@ -393,15 +391,19 @@
                                    d.status_processamento === 'EM ANÁLISE' ? 'bg-warning text-dark' : 
                                    d.status_processamento === 'CANCELADO' ? 'bg-secondary' : 'bg-info';
                 
+                // Mapeamento do campo telefone_notificado ou Telefone do Notificado
+                const tel = d.telefone_notificado || d["Telefone do Notificado"] || "N/I";
+
                 tbody.innerHTML += `
                     <tr>
                         <td class="small fw-bold">${dataFormatada}</td>
                         <td class="small">${d.local_ocorrencia || '-'}</td>
                         <td class="small text-truncate" style="max-width: 150px;">${d.tipo_evento || '-'}</td>
                         <td class="small">${d.nome_notificante || '-'}</td>
+                        <td class="small">${tel}</td>
                         <td><span class="status-badge ${statusColor} text-white">${d.status_processamento || 'PENDENTE'}</span></td>
                         <td>
-                            <button class="btn btn-sm btn-outline-primary" onclick="abrirModalTratativa('${d.id}', '${d.status_processamento}', '${d.comentarios_admin || ''}')">
+                            <button class="btn btn-sm btn-outline-primary" onclick="abrirModalTratativa('${d.id}', '${d.status_processamento}', '${d.comentarios_admin || ''}', '${tel}')">
                                 Tratar
                             </button>
                         </td>
@@ -410,10 +412,11 @@
             });
         }
 
-        window.abrirModalTratativa = function(id, status, comentario) {
+        window.abrirModalTratativa = function(id, status, comentario, telefone) {
             document.getElementById('editDocId').value = id;
             document.getElementById('editStatus').value = status || 'PENDENTE';
             document.getElementById('editComentario').value = comentario || '';
+            document.getElementById('infoTelefone').innerText = telefone || 'N/I';
             new bootstrap.Modal(document.getElementById('modalTratativa')).show();
         };
 
