@@ -96,7 +96,7 @@
                 </select>
             </div>
             <div class="col-md-4">
-                <label class="form-label small fw-bold">Período (Opcional)</label>
+                <label class="form-label small fw-bold">Período</label>
                 <input type="month" id="filtroMes" class="form-control form-select-sm">
             </div>
         </div>
@@ -219,9 +219,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, collection, onSnapshot, query, orderBy, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        // Nota: Certifique-se que o import acima está correto conforme seu ambiente. Reutilizando a estrutura fornecida:
-        import { getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, collection, onSnapshot, query, orderBy, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBwqk2Yf2xCA1IrNRv5AgYCPU-6CSt1FTs",
@@ -239,17 +237,31 @@
         let chartUnidades, chartCategorias, chartLinha, chartPizzaStatus;
         let todosDados = [];
 
-        // Snapshot em tempo real com log de depuração
         const q = query(collection(db, COLECAO), orderBy("carimbo_tempo", "desc"));
         onSnapshot(q, (snapshot) => {
             todosDados = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
             
-            console.log("🔥 Firebase: Recebidos " + todosDados.length + " registros.");
-            console.log("Conteúdo bruto:", todosDados);
+            // LOG PARA DEBUG: Verifique no console (F12) se aqui aparecem os 3 registros
+            console.log("Registros vindos do Firebase:", todosDados.length);
+            console.log("Dados recebidos:", todosDados);
 
             popularFiltroUnidades(todosDados);
             aplicarFiltros();
         });
+
+        // FUNÇÃO PARA FORMATAR TELEFONE (XX) XXXXX-XXXX
+        function formatarTelefone(v) {
+            if (!v) return "N/I";
+            v = v.replace(/\D/g, ""); // Remove tudo que não é dígito
+            if (v.length > 11) v = v.substring(0, 11);
+            
+            if (v.length === 11) {
+                return v.replace(/^(\d{2})(\d{5})(\d{4})$/, "($1) $2-$3");
+            } else if (v.length === 10) {
+                return v.replace(/^(\d{2})(\d{4})(\d{4})$/, "($1) $2-$3");
+            }
+            return v; // Retorna original se não tiver 10 ou 11 dígitos
+        }
 
         function popularFiltroUnidades(dados) {
             const select = document.getElementById('filtroUnidade');
@@ -272,7 +284,6 @@
                 const matchStatus = status === 'TODOS' || d.status_processamento === status;
                 
                 let matchData = true;
-                // Se o usuário selecionou um mês, filtra. Se não selecionou nada, passa tudo.
                 if(mesRef && d.data_ocorrencia) {
                     matchData = d.data_ocorrencia.startsWith(mesRef);
                 }
@@ -280,7 +291,8 @@
                 return matchUnidade && matchStatus && matchData;
             });
 
-            console.log("🎯 Filtro aplicado: Exibindo " + filtrados.length + " de " + todosDados.length);
+            // LOG PARA DEBUG: Verifique se os filtros estão escondendo seus registros
+            console.log("Registros após filtros:", filtrados.length);
 
             atualizarKPIs(filtrados);
             renderizarGraficos(filtrados);
@@ -397,13 +409,15 @@
             document.getElementById('contadorTabela').innerText = `Exibindo ${dados.length} registros`;
             tbody.innerHTML = '';
             
-            dados.forEach(d => {
+            dados.slice(0, 20).forEach(d => {
                 const dataFormatada = d.data_ocorrencia ? d.data_ocorrencia.split('-').reverse().join('/') : '---';
                 const statusColor = d.status_processamento === 'CONCLUÍDO' ? 'bg-success' : 
                                    d.status_processamento === 'EM ANÁLISE' ? 'bg-warning text-dark' : 
                                    d.status_processamento === 'CANCELADO' ? 'bg-secondary' : 'bg-info';
                 
-                const tel = d.telefone_notificado || d["Telefone do Notificado"] || "N/I";
+                // Aqui aplicamos a máscara no telefone
+                const telRaw = d.telefone_notificado || d["Telefone do Notificado"] || "";
+                const telFormatado = formatarTelefone(telRaw);
 
                 tbody.innerHTML += `
                     <tr>
@@ -411,10 +425,10 @@
                         <td class="small">${d.local_ocorrencia || '-'}</td>
                         <td class="small text-truncate" style="max-width: 150px;">${d.tipo_evento || '-'}</td>
                         <td class="small">${d.nome_notificante || '-'}</td>
-                        <td class="small">${tel}</td>
+                        <td class="small">${telFormatado}</td>
                         <td><span class="status-badge ${statusColor} text-white">${d.status_processamento || 'PENDENTE'}</span></td>
                         <td>
-                            <button class="btn btn-sm btn-outline-primary" onclick="abrirModalTratativa('${d.id}', '${d.status_processamento}', '${d.comentarios_admin || ''}', '${tel}')">
+                            <button class="btn btn-sm btn-outline-primary" onclick="abrirModalTratativa('${d.id}', '${d.status_processamento}', '${d.comentarios_admin || ''}', '${telFormatado}')">
                                 Tratar
                             </button>
                         </td>
@@ -427,7 +441,7 @@
             document.getElementById('editDocId').value = id;
             document.getElementById('editStatus').value = status || 'PENDENTE';
             document.getElementById('editComentario').value = comentario || '';
-            document.getElementById('editTelefone').value = (telefone === 'N/I' || !telefone) ? '' : telefone;
+            document.getElementById('editTelefone').value = (telefone === 'N/I') ? '' : telefone;
             new bootstrap.Modal(document.getElementById('modalTratativa')).show();
         };
 
@@ -435,18 +449,14 @@
             const id = document.getElementById('editDocId').value;
             const docRef = doc(db, COLECAO, id);
             
-            try {
-                await updateDoc(docRef, {
-                    status_processamento: document.getElementById('editStatus').value,
-                    comentarios_admin: document.getElementById('editComentario').value,
-                    telefone_notificado: document.getElementById('editTelefone').value,
-                    data_tratativa: new Date().toLocaleString('pt-BR')
-                });
-                bootstrap.Modal.getInstance(document.getElementById('modalTratativa')).hide();
-            } catch (err) {
-                console.error("Erro ao salvar:", err);
-                alert("Erro ao salvar alterações.");
-            }
+            await updateDoc(docRef, {
+                status_processamento: document.getElementById('editStatus').value,
+                comentarios_admin: document.getElementById('editComentario').value,
+                telefone_notificado: document.getElementById('editTelefone').value,
+                data_tratativa: new Date().toLocaleString('pt-BR')
+            });
+            
+            bootstrap.Modal.getInstance(document.getElementById('modalTratativa')).hide();
         });
 
     </script>
