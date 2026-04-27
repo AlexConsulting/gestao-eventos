@@ -110,6 +110,7 @@
                             <th>Tipo de Evento</th>
                             <th>Notificante</th>
                             <th>Status</th>
+                            <th>Ações</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -119,9 +120,40 @@
         </div>
     </main>
 
+    <div class="modal fade" id="modalTratativa" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">Tratativa de Evento</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="editDocId">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Alterar Status</label>
+                        <select id="editStatus" class="form-select">
+                            <option value="PENDENTE">PENDENTE</option>
+                            <option value="EM ANÁLISE">EM ANÁLISE</option>
+                            <option value="CONCLUÍDO">CONCLUÍDO</option>
+                            <option value="CANCELADO">CANCELADO</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Comentários/Conduta do Admin</label>
+                        <textarea id="editComentario" class="form-control" rows="4" placeholder="Descreva as ações tomadas..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                    <button type="button" class="btn btn-success" id="btnSalvarTratativa">Salvar Alterações</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, collection, onSnapshot, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, collection, onSnapshot, query, orderBy, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBwqk2Yf2xCA1IrNRv5AgYCPU-6CSt1FTs",
@@ -141,12 +173,42 @@
         // Escuta em Tempo Real
         const q = query(collection(db, COLECAO), orderBy("carimbo_data_hora", "desc"));
         onSnapshot(q, (snapshot) => {
-            const dados = snapshot.docs.map(doc => doc.data());
+            const dados = snapshot.docs.map(d => ({
+                id: d.id,
+                ...d.data()
+            }));
             atualizarDashboard(dados);
         });
 
+        // Funções Globais para o Modal
+        window.abrirModalTratativa = function(id, status, comentario) {
+            document.getElementById('editDocId').value = id;
+            document.getElementById('editStatus').value = status || 'PENDENTE';
+            document.getElementById('editComentario').value = comentario || '';
+            const modal = new bootstrap.Modal(document.getElementById('modalTratativa'));
+            modal.show();
+        };
+
+        document.getElementById('btnSalvarTratativa').addEventListener('click', async () => {
+            const id = document.getElementById('editDocId').value;
+            const novoStatus = document.getElementById('editStatus').value;
+            const novoComentario = document.getElementById('editComentario').value;
+
+            try {
+                const docRef = doc(db, COLECAO, id);
+                await updateDoc(docRef, {
+                    status_processamento: novoStatus,
+                    comentarios_admin: novoComentario,
+                    data_tratativa: new Date().toLocaleString('pt-BR')
+                });
+                bootstrap.Modal.getInstance(document.getElementById('modalTratativa')).hide();
+            } catch (e) {
+                console.error("Erro ao atualizar: ", e);
+                alert("Erro ao salvar dados.");
+            }
+        });
+
         function atualizarDashboard(dados) {
-            // 1. KPIs
             document.getElementById('kpiTotal').innerText = dados.length;
             document.getElementById('kpiAdm').innerText = dados.filter(d => d.tipo_evento?.includes('ADMINISTRATIVO')).length;
             document.getElementById('kpiAssist').innerText = dados.filter(d => d.tipo_evento === 'ASSISTENCIAL').length;
@@ -160,7 +222,6 @@
             if (chartUnidades) chartUnidades.destroy();
             if (chartCategorias) chartCategorias.destroy();
 
-            // Processar Unidades
             const unidadesMap = dados.reduce((acc, d) => {
                 const local = d.local_ocorrencia || "Não Informado";
                 acc[local] = (acc[local] || 0) + 1;
@@ -184,7 +245,6 @@
                 }
             });
 
-            // Processar Categorias
             const catMap = dados.reduce((acc, d) => {
                 const tipo = d.tipo_evento || "Outros";
                 acc[tipo] = (acc[tipo] || 0) + 1;
@@ -212,17 +272,26 @@
             
             dados.slice(0, 10).forEach(d => {
                 const dataFormatada = d.data_ocorrencia ? d.data_ocorrencia.split('-').reverse().join('/') : '---';
+                const statusColor = d.status_processamento === 'CONCLUÍDO' ? 'bg-success' : 
+                                   d.status_processamento === 'EM ANÁLISE' ? 'bg-warning' : 'bg-info';
+                
                 tbody.innerHTML += `
                     <tr>
                         <td class="small fw-bold">${dataFormatada}</td>
                         <td>${d.local_ocorrencia || '-'}</td>
                         <td class="small text-truncate" style="max-width: 200px;">${d.tipo_evento || '-'}</td>
                         <td class="small">${d.nome_notificante || '-'}</td>
-                        <td><span class="status-badge bg-info text-white">${d.status_processamento || 'PENDENTE'}</span></td>
+                        <td><span class="status-badge ${statusColor} text-white">${d.status_processamento || 'PENDENTE'}</span></td>
+                        <td>
+                            <button class="btn btn-sm btn-primary" onclick="abrirModalTratativa('${d.id}', '${d.status_processamento}', '${d.comentarios_admin || ''}')">
+                                Tratar
+                            </button>
+                        </td>
                     </tr>
                 `;
             });
         }
     </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
