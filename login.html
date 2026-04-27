@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Gestão de Eventos</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #2c3e50;
+            --accent-green: #27ae60;
+            --white: #ffffff;
+        }
+        body { 
+            background-color: var(--bg-dark); 
+            font-family: 'Inter', sans-serif;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .login-card {
+            background: var(--white);
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+            width: 100%;
+            max-width: 400px;
+            border-top: 8px solid var(--accent-green);
+        }
+        .btn-login {
+            background-color: var(--accent-green);
+            border: none;
+            color: white;
+            font-weight: bold;
+        }
+        .btn-login:hover {
+            background-color: #219150;
+            color: white;
+        }
+        .brand-title {
+            color: var(--bg-dark);
+            font-weight: 800;
+            text-align: center;
+            margin-bottom: 25px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="login-card">
+        <h2 class="brand-title">ACESSO RESTRITO</h2>
+        <div id="loginError" class="alert alert-danger d-none small"></div>
+        
+        <div class="mb-3">
+            <label class="form-label fw-bold">E-mail</label>
+            <input type="email" id="email" class="form-control" placeholder="admin@empresa.com">
+        </div>
+        <div class="mb-4">
+            <label class="form-label fw-bold">Senha</label>
+            <input type="password" id="senha" class="form-control" placeholder="******">
+        </div>
+        
+        <button id="btnEntrar" class="btn btn-login w-100 py-2">ENTRAR NO SISTEMA</button>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+        // SUA CONFIGURAÇÃO (A mesma do dashboard)
+        const firebaseConfig = {
+            apiKey: "AIzaSyBwqk2Yf2xCA1IrNRv5AgYCPU-6CSt1FTs",
+            authDomain: "gestaoeventos-a5ddf.firebaseapp.com",
+            projectId: "gestaoeventos-a5ddf",
+            storageBucket: "gestaoeventos-a5ddf.firebasestorage.app",
+            messagingSenderId: "963856052375",
+            appId: "1:963856052375:web:bed2c8c06e4b7b71a2f9d2"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+
+        document.getElementById('btnEntrar').addEventListener('click', () => {
+            const email = document.getElementById('email').value;
+            const senha = document.getElementById('senha').value;
+            const errorDiv = document.getElementById('loginError');
+
+            signInWithEmailAndPassword(auth, email, senha)
+                .then(() => {
+                    window.location.href = "dashboard.html"; // Nome do seu arquivo atual
+                })
+                .catch((error) => {
+                    errorDiv.classList.remove('d-none');
+                    errorDiv.innerText = "Falha na autenticação: E-mail ou senha incorretos.";
+                });
+        });
+    </script>
+</body>
+</html>
