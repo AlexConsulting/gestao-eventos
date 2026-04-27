@@ -189,8 +189,10 @@
                 <div class="modal-body">
                     <input type="hidden" id="editDocId">
                     
-                    <div class="alert alert-secondary p-2 small">
-                        <strong>Contato do Notificado:</strong> <span id="infoTelefone">---</span>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Telefone do Notificado</label>
+                        <input type="text" id="editTelefone" class="form-control" placeholder="(00) 00000-0000">
+                        <div class="form-text">Informe o contato para retorno da tratativa.</div>
                     </div>
 
                     <div class="mb-3">
@@ -391,7 +393,6 @@
                                    d.status_processamento === 'EM ANÁLISE' ? 'bg-warning text-dark' : 
                                    d.status_processamento === 'CANCELADO' ? 'bg-secondary' : 'bg-info';
                 
-                // Mapeamento do campo telefone_notificado ou Telefone do Notificado
                 const tel = d.telefone_notificado || d["Telefone do Notificado"] || "N/I";
 
                 tbody.innerHTML += `
@@ -416,18 +417,22 @@
             document.getElementById('editDocId').value = id;
             document.getElementById('editStatus').value = status || 'PENDENTE';
             document.getElementById('editComentario').value = comentario || '';
-            document.getElementById('infoTelefone').innerText = telefone || 'N/I';
+            document.getElementById('editTelefone').value = telefone === 'N/I' ? '' : telefone;
             new bootstrap.Modal(document.getElementById('modalTratativa')).show();
         };
 
         document.getElementById('btnSalvarTratativa').addEventListener('click', async () => {
             const id = document.getElementById('editDocId').value;
             const docRef = doc(db, COLECAO, id);
+            
+            // ATUALIZAÇÃO INCLUINDO O NOVO CAMPO DE TELEFONE
             await updateDoc(docRef, {
                 status_processamento: document.getElementById('editStatus').value,
                 comentarios_admin: document.getElementById('editComentario').value,
+                telefone_notificado: document.getElementById('editTelefone').value,
                 data_tratativa: new Date().toLocaleString('pt-BR')
             });
+            
             bootstrap.Modal.getInstance(document.getElementById('modalTratativa')).hide();
         });
 
