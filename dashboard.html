@@ -191,7 +191,7 @@
                     
                     <div class="mb-3">
                         <label class="form-label fw-bold">Telefone do Notificado</label>
-                        <input type="text" id="editTelefone" class="form-control" placeholder="(00) 00000-0000">
+                        <input type="text" id="editTelefone" class="form-control" placeholder="(00) 00000-0000" maxlength="15">
                         <div class="form-text">Informe o contato para retorno da tratativa.</div>
                     </div>
 
@@ -237,11 +237,11 @@
         let chartUnidades, chartCategorias, chartLinha, chartPizzaStatus;
         let todosDados = [];
 
+        // Início da escuta do Firebase
         const q = query(collection(db, COLECAO), orderBy("carimbo_tempo", "desc"));
         onSnapshot(q, (snapshot) => {
             todosDados = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
             
-            // LOG PARA DEBUG: Verifique no console (F12) se aqui aparecem os 3 registros
             console.log("Registros vindos do Firebase:", todosDados.length);
             console.log("Dados recebidos:", todosDados);
 
@@ -249,19 +249,35 @@
             aplicarFiltros();
         });
 
-        // FUNÇÃO PARA FORMATAR TELEFONE (XX) XXXXX-XXXX
-        function formatarTelefone(v) {
-            if (!v) return "N/I";
-            v = v.replace(/\D/g, ""); // Remove tudo que não é dígito
-            if (v.length > 11) v = v.substring(0, 11);
+        // 🔹 FUNÇÃO PARA APLICAR MÁSCARA DE TELEFONE
+        function aplicarMascaraTelefone(valor) {
+            if (!valor) return "N/I";
+            let v = valor.replace(/\D/g, ""); // Remove tudo que não é número
             
+            if (v.length > 11) v = v.substring(0, 11);
+
             if (v.length === 11) {
+                // Celular: (XX) XXXXX-XXXX
                 return v.replace(/^(\d{2})(\d{5})(\d{4})$/, "($1) $2-$3");
             } else if (v.length === 10) {
+                // Fixo: (XX) XXXX-XXXX
                 return v.replace(/^(\d{2})(\d{4})(\d{4})$/, "($1) $2-$3");
             }
-            return v; // Retorna original se não tiver 10 ou 11 dígitos
+            return v; // Caso tenha menos dígitos, retorna o que tem
         }
+
+        // 🔹 FORMATADOR EM TEMPO REAL NO MODAL
+        document.getElementById('editTelefone').addEventListener('input', (e) => {
+            let v = e.target.value.replace(/\D/g, "");
+            if (v.length > 11) v = v.substring(0, 11);
+            if (v.length > 10) {
+                e.target.value = v.replace(/^(\d{2})(\d{5})(\d{4})$/, "($1) $2-$3");
+            } else if (v.length > 2) {
+                e.target.value = v.replace(/^(\d{2})(\d{0,4})(\d{0,4})$/, "($1) $2-$3").replace(/-$/, "");
+            } else if (v.length > 0) {
+                e.target.value = v.replace(/^(\d{0,2})/, "($1");
+            }
+        });
 
         function popularFiltroUnidades(dados) {
             const select = document.getElementById('filtroUnidade');
@@ -291,7 +307,6 @@
                 return matchUnidade && matchStatus && matchData;
             });
 
-            // LOG PARA DEBUG: Verifique se os filtros estão escondendo seus registros
             console.log("Registros após filtros:", filtrados.length);
 
             atualizarKPIs(filtrados);
@@ -415,9 +430,9 @@
                                    d.status_processamento === 'EM ANÁLISE' ? 'bg-warning text-dark' : 
                                    d.status_processamento === 'CANCELADO' ? 'bg-secondary' : 'bg-info';
                 
-                // Aqui aplicamos a máscara no telefone
-                const telRaw = d.telefone_notificado || d["Telefone do Notificado"] || "";
-                const telFormatado = formatarTelefone(telRaw);
+                // 🔹 APLICAÇÃO DA MÁSCARA NA TABELA
+                const telOriginal = d.telefone_notificado || d["Telefone do Notificado"] || "";
+                const telMascara = aplicarMascaraTelefone(telOriginal);
 
                 tbody.innerHTML += `
                     <tr>
@@ -425,10 +440,10 @@
                         <td class="small">${d.local_ocorrencia || '-'}</td>
                         <td class="small text-truncate" style="max-width: 150px;">${d.tipo_evento || '-'}</td>
                         <td class="small">${d.nome_notificante || '-'}</td>
-                        <td class="small">${telFormatado}</td>
+                        <td class="small">${telMascara}</td>
                         <td><span class="status-badge ${statusColor} text-white">${d.status_processamento || 'PENDENTE'}</span></td>
                         <td>
-                            <button class="btn btn-sm btn-outline-primary" onclick="abrirModalTratativa('${d.id}', '${d.status_processamento}', '${d.comentarios_admin || ''}', '${telFormatado}')">
+                            <button class="btn btn-sm btn-outline-primary" onclick="abrirModalTratativa('${d.id}', '${d.status_processamento}', '${d.comentarios_admin || ''}', '${telOriginal}')">
                                 Tratar
                             </button>
                         </td>
@@ -441,7 +456,13 @@
             document.getElementById('editDocId').value = id;
             document.getElementById('editStatus').value = status || 'PENDENTE';
             document.getElementById('editComentario').value = comentario || '';
-            document.getElementById('editTelefone').value = (telefone === 'N/I') ? '' : telefone;
+            
+            // Aqui passamos o telefone original para o campo, que será formatado pelo evento 'input' acima
+            const telInput = document.getElementById('editTelefone');
+            telInput.value = telefone || '';
+            // Disparamos o evento manual para que ele formate assim que abrir
+            telInput.dispatchEvent(new Event('input'));
+
             new bootstrap.Modal(document.getElementById('modalTratativa')).show();
         };
 
