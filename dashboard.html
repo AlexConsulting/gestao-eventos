@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard de Gestão de Eventos e Ocorrências</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    
+    <style>
+        :root {
+            --bg-light: #f1f4f8;
+            --header-dark: #2c3e50;
+            --accent-green: #27ae60;
+            --accent-red: #e74c3c;
+        }
+        body { background-color: var(--bg-light); font-family: 'Inter', sans-serif; }
+        .dashboard-header { background: var(--header-dark); color: white; padding: 25px 0; border-bottom: 5px solid var(--accent-green); }
+        
+        .kpi-card {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            text-align: center;
+            border-top: 4px solid var(--accent-green);
+        }
+        .kpi-value { font-size: 2.2rem; font-weight: 800; color: var(--header-dark); }
+        .kpi-label { color: #7f8c8d; font-size: 0.85rem; font-weight: 600; text-transform: uppercase; }
+
+        .chart-container {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            margin-bottom: 25px;
+            height: 400px !important; /* Altura fixa adicionada para impedir o loop de redimensionamento da tela */
+            position: relative;
+        }
+        .table-container { background: white; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); margin-top: 20px; }
+        .status-badge { font-size: 0.75rem; padding: 5px 10px; border-radius: 20px; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <header class="dashboard-header mb-4">
+        <div class="container d-flex justify-content-between align-items-center">
+            <div>
+                <h1 class="h3 mb-0">Monitoramento de Eventos e Ocorrências</h1>
+                <p class="mb-0 opacity-75">Visão Executiva de Incidentes e Fluxos Administrativos</p>
+            </div>
+            <button class="btn btn-outline-light btn-sm" onclick="window.location.reload()">Atualizar Dados</button>
+        </div>
+    </header>
+
+    <main class="container">
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="kpi-card">
+                    <div class="kpi-label">Total de Eventos</div>
+                    <div class="kpi-value" id="kpiTotal">0</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="kpi-card" style="border-top-color: #e67e22">
+                    <div class="kpi-label">Atrasos/Faltas</div>
+                    <div class="kpi-value" id="kpiAdm">0</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="kpi-card" style="border-top-color: #e74c3c">
+                    <div class="kpi-label">Eventos Assistenciais</div>
+                    <div class="kpi-value" id="kpiAssist">0</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="kpi-card" style="border-top-color: #3498db">
+                    <div class="kpi-label">Problemas de TI</div>
+                    <div class="kpi-value" id="kpiTI">0</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-lg-7">
+                <div class="chart-container">
+                    <h5 class="fw-bold mb-4">Volume de Ocorrências por Unidade</h5>
+                    <canvas id="chartUnidades"></canvas>
+                </div>
+            </div>
+            <div class="col-lg-5">
+                <div class="chart-container">
+                    <h5 class="fw-bold mb-4">Distribuição por Categoria</h5>
+                    <canvas id="chartCategorias"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-container mb-5">
+            <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
+                <h5 class="mb-0 fw-bold">Log de Eventos Recentes</h5>
+                <span class="text-muted small">Mostrando as últimas 10 notificações</span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0" id="tabelaEventos">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Data</th>
+                            <th>Unidade</th>
+                            <th>Tipo de Evento</th>
+                            <th>Notificante</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, collection, onSnapshot, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBwqk2Yf2xCA1IrNRv5AgYCPU-6CSt1FTs",
+            authDomain: "gestaoeventos-a5ddf.firebaseapp.com",
+            projectId: "gestaoeventos-a5ddf",
+            storageBucket: "gestaoeventos-a5ddf.firebasestorage.app",
+            messagingSenderId: "963856052375",
+            appId: "1:963856052375:web:bed2c8c06e4b7b71a2f9d2"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const COLECAO = 'eventos_notificacoes';
+
+        let chartUnidades, chartCategorias;
+
+        // Escuta em Tempo Real
+        const q = query(collection(db, COLECAO), orderBy("carimbo_data_hora", "desc"));
+        onSnapshot(q, (snapshot) => {
+            const dados = snapshot.docs.map(doc => doc.data());
+            atualizarDashboard(dados);
+        });
+
+        function atualizarDashboard(dados) {
+            // 1. KPIs
+            document.getElementById('kpiTotal').innerText = dados.length;
+            document.getElementById('kpiAdm').innerText = dados.filter(d => d.tipo_evento?.includes('ADMINISTRATIVO')).length;
+            document.getElementById('kpiAssist').innerText = dados.filter(d => d.tipo_evento === 'ASSISTENCIAL').length;
+            document.getElementById('kpiTI').innerText = dados.filter(d => d.tipo_evento?.includes('TI')).length;
+
+            renderizarGraficos(dados);
+            renderizarTabela(dados);
+        }
+
+        function renderizarGraficos(dados) {
+            if (chartUnidades) chartUnidades.destroy();
+            if (chartCategorias) chartCategorias.destroy();
+
+            // Processar Unidades
+            const unidadesMap = dados.reduce((acc, d) => {
+                const local = d.local_ocorrencia || "Não Informado";
+                acc[local] = (acc[local] || 0) + 1;
+                return acc;
+            }, {});
+
+            chartUnidades = new Chart(document.getElementById('chartUnidades'), {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(unidadesMap),
+                    datasets: [{
+                        label: 'Ocorrências',
+                        data: Object.values(unidadesMap),
+                        backgroundColor: '#27ae60'
+                    }]
+                },
+                options: { 
+                    indexAxis: 'y', 
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } } 
+                }
+            });
+
+            // Processar Categorias
+            const catMap = dados.reduce((acc, d) => {
+                const tipo = d.tipo_evento || "Outros";
+                acc[tipo] = (acc[tipo] || 0) + 1;
+                return acc;
+            }, {});
+
+            chartCategorias = new Chart(document.getElementById('chartCategorias'), {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(catMap),
+                    datasets: [{
+                        data: Object.values(catMap),
+                        backgroundColor: ['#2c3e50', '#27ae60', '#e67e22', '#e74c3c', '#3498db', '#9b59b6']
+                    }]
+                },
+                options: {
+                    maintainAspectRatio: false
+                }
+            });
+        }
+
+        function renderizarTabela(dados) {
+            const tbody = document.querySelector('#tabelaEventos tbody');
+            tbody.innerHTML = '';
+            
+            dados.slice(0, 10).forEach(d => {
+                const dataFormatada = d.data_ocorrencia ? d.data_ocorrencia.split('-').reverse().join('/') : '---';
+                tbody.innerHTML += `
+                    <tr>
+                        <td class="small fw-bold">${dataFormatada}</td>
+                        <td>${d.local_ocorrencia || '-'}</td>
+                        <td class="small text-truncate" style="max-width: 200px;">${d.tipo_evento || '-'}</td>
+                        <td class="small">${d.nome_notificante || '-'}</td>
+                        <td><span class="status-badge bg-info text-white">${d.status_processamento || 'PENDENTE'}</span></td>
+                    </tr>
+                `;
+            });
+        }
+    </script>
+</body>
+</html>

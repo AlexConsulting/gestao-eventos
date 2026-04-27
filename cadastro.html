@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestão de Eventos e Notificações (Firebase)</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; }
+        .cadastro-header { background-color: #198754; color: white; padding: 20px 0; margin-bottom: 30px; }
+        .form-container { 
+            background-color: white; 
+            padding: 30px; 
+            border-radius: .5rem; 
+            box-shadow: 0 0.5rem 1rem rgba(0,0,0,.1); 
+        }
+        .section-title { margin-top: 20px; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 20px; color: #198754; font-weight: bold; }
+        .checkbox-group { background: #f1f3f5; padding: 15px; border-radius: 8px; border: 1px solid #dee2e6; }
+        
+        /* Força a visualização em maiúsculas enquanto o usuário digita */
+        input[type="text"], input[type="email"], textarea {
+            text-transform: uppercase;
+        }
+    </style>
+    
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+</head>
+<body>
+
+    <header class="cadastro-header">
+        <div class="container">
+            <h1 class="text-center">Notificação de Eventos e Ocorrências</h1>
+            <p class="text-center">Registro seguro de incidentes e fluxos administrativos</p>
+            <div class="text-center mt-3">
+                <a href="index.html" class="btn btn-sm btn-light">&larr; Voltar à Página Inicial</a>
+            </div>
+        </div>
+    </header>
+
+    <main class="container mb-5">
+        <div id="statusMessage" class="alert text-center" role="alert" style="display:none;"></div>
+
+        <div class="form-container">
+            <form id="cadastroForm">
+                
+                <h4 class="section-title">1. Identificação do Notificante:</h4>
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Email:</label>
+                        <input type="email" class="form-control" name="email_notificante" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Nome do notificante:</label>
+                        <input type="text" class="form-control" name="nome_notificante" placeholder="NOME COMPLETO" required>
+                    </div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Local de ocorrência:</label>
+                        <select class="form-select" name="local_ocorrencia" required>
+                            <option value="">Selecione a unidade...</option>
+                            <option value="HGG">HGG</option>
+                            <option value="SETOR PERFORMA">Setor Performa</option>
+                            <option value="PREVENT SENIOR - PS SANTA MAGGIORI SANTANA">Prevent Senior - PS Santa Maggiori Santana</option>
+                            <option value="HOSPITAL CRUZ AZUL">Hospital Cruz Azul</option>
+                            <option value="M'BOI MIRIM">M'Boi Mirim</option>
+                            <option value="PREVENT SENIOR / MADRID">Prevent Senior / Madrid</option>
+                            <option value="HGG - TREINAMENTO">HGG - Treinamento</option>
+                            <option value="PREVENT SENIOR - UTI">Prevent Senior - UTI</option>
+                            <option value="M'BOI MIRIM - TREINAMENTO">M'Boi Mirim - Treinamento</option>
+                            <option value="PLENA SAÚDE">Plena Saúde</option>
+                            <option value="HOSPITAL ARNALDO DE FIGUEIREDO FREITAS">Hospital Arnaldo de Figueiredo Freitas</option>
+                            <option value="PREVENT SENIOR / IBIRAPUERA">Prevent Senior / Ibirapuera</option>
+                            <option value="PREVENT SENIOR / ALEMANHA">Prevent Senior / Alemanha</option>
+                            <option value="PREVENT SENIOR / SBC">Prevent Senior / SBC</option>
+                            <option value="PREVENT SENIOR / SANTO ANDRE">Prevent Senior / Santo Andre</option>
+                            <option value="ROTA DOS BANDEIRANTES">Rota dos Bandeirantes</option>
+                            <option value="HOSPITAL GERAL DE GRAJAU">Hospital Geral de Grajau</option>
+                            <option value="HOSPITAL SALVALUS">Hospital Salvalus</option>
+                            <option value="HOSPITAL ROSÁRIO">Hospital Rosário</option>
+                            <option value="HOSPITAL CAIEIRAS">Hospital Caieiras</option>
+                            <option value="HOSPITAL HIABC">Hospital HIABC</option>
+                            <option value="HSL OSASCO">HSL Osasco</option>
+                            <option value="OUTRO">Outro (especificar na descrição)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Data da ocorrência:</label>
+                        <input type="date" class="form-control" name="data_ocorrencia" required>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Dia da ocorrência:</label>
+                        <select class="form-select" name="dia_semana" required>
+                            <option value="">Selecione...</option>
+                            <option value="SEGUNDA">Segunda</option>
+                            <option value="TERÇA">Terça</option>
+                            <option value="QUARTA">Quarta</option>
+                            <option value="QUINTA">Quinta</option>
+                            <option value="SEXTA">Sexta</option>
+                            <option value="SABADO">Sabado</option>
+                            <option value="DOMINGO">Domingo</option>
+                        </select>
+                    </div>
+                </div>
+
+                <h4 class="section-title">2. Alvo da Notificação:</h4>
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label d-block">A quem deseja notificar? (Múltipla Escolha):</label>
+                        <div class="checkbox-group">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="notificar_quem" value="MÉDICO GENERALISTA" id="check1">
+                                <label class="form-check-label" for="check1">Médico generalista</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="notificar_quem" value="INSTITUIÇÃO" id="check2">
+                                <label class="form-check-label" for="check2">Instituição (Eventos com equipes da unidade)</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="notificar_quem" value="MÉDICO ESPECIALISTA" id="check3">
+                                <label class="form-check-label" for="check3">Médico Especialista</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="notificar_quem" value="PROFISSIONAL EM TREINAMENTO" id="check4">
+                                <label class="form-check-label" for="check4">Profissional em Treinamento</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="notificar_quem" value="OUTRO" id="check5">
+                                <label class="form-check-label" for="check5">Outro</label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Nome do notificado / Setor:</label>
+                        <input type="text" class="form-control" name="nome_notificado_setor" placeholder="Digite o nome ou setor" required>
+                    </div>
+                </div>
+
+                <h4 class="section-title">3. Detalhes do Evento:</h4>
+                <div class="row mb-3">
+                    <div class="col-md-12">
+                        <label class="form-label">Tipo de evento:</label>
+                        <select class="form-select" name="tipo_evento" required>
+                            <option value="">Selecione o tipo de evento...</option>
+                            <option value="ASSISTENCIAL">Assistencial (Relacionado ao paciente - informar prontuário)</option>
+                            <option value="ADMINISTRATIVO - FALTA">Administrativo - Falta</option>
+                            <option value="ADMINISTRATIVO - ATRASOS">Administrativo - Atrasos</option>
+                            <option value="COMPORTAMENTAL">Comportamental (Ética, Acolhimento, Empatia etc)</option>
+                            <option value="AUSENCIA DE EVOLUÇÃO">Ausência de evolução ou evolução incompleta</option>
+                            <option value="PROBLEMAS TI">Falta de sistema, problemas com rede, senha de acesso</option>
+                            <option value="FALHA TROCA PLANTÃO">Não cumprimento da rotina de troca de plantão</option>
+                            <option value="FALTA MATERIAL/EQUIP">Falta de material, equipamento ou profissionais insuficiente</option>
+                            <option value="INTERCORRÊNCIA UNIDADE">Comunicado de intercorrência relacionada a paciente</option>
+                            <option value="NÃO PASSOU PLANTÃO">Não passou plantão</option>
+                            <option value="FALHA PROTOCOLO INSTITUCIONAL">Não realizou protocolo institucional adequadamente</option>
+                            <option value="NÃO REALIZOU INTEGRAÇÃO">Não realizou Integração</option>
+                            <option value="DESCUMPRIMENTO PROTOCOLO INST">Não cumprimento do protocolo pela instituição</option>
+                            <option value="BAIXO ATENDIMENTO">Número atendimento abaixo da meta por hora</option>
+                            <option value="PROFISSIONAIS INSUFICIENTE">Número de profissionais insuficiente</option>
+                            <option value="FALHA LME">Não realização ou incompleto preenchimento LME (Alto Custo)</option>
+                            <option value="RECEITA INCOMPLETA">Fornecimento de receita incompleto</option>
+                            <option value="NEGATIVA RECEITA">Negativa de receita não conforme</option>
+                            <option value="ROTINA ERRADA RECEPÇÃO">Rotina errada orientada/realizada pela recepção</option>
+                            <option value="AGENDAMENTO ERRADO">Administrativo (Agendamento de especialidade errada)</option>
+                            <option value="ABANDONO PLANTÃO">Abandono de plantão antes do término</option>
+                            <option value="EXAME ERRADO">Solicitação de exame errado/incompleto</option>
+                            <option value="NÃO REAVALIOU EXAMES">Não reavaliação dos exames</option>
+                            <option value="CANCELAMENTO AGENDA">Administrativo (Relacionado a Cancelamento de agenda)</option>
+                            <option value="NÃO REALIZOU CHECK-IN">Não realizou Check-in (entrada)</option>
+                            <option value="NÃO REALIZOU CHECK-OUT">Não realizou Check-out (saída)</option>
+                            <option value="FALHA CHECK-IN/OUT">Não realizou Check-in e Check-out</option>
+                            <option value="AUSENCIA EM AULA">Ausência de participação em aula</option>
+                            <option value="TRIAGEM NÃO CONFORME">Triagem não conforme</option>
+                            <option value="OUTRO">Outro (especificar abaixo)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="row mb-3">
+                    <div class="col-md-12 mb-3">
+                        <label class="form-label">Descrição do evento:</label>
+                        <textarea class="form-control" name="descricao_evento" rows="3" placeholder="Descreva os detalhes..." required></textarea>
+                    </div>
+                    <div class="col-md-12 mb-3">
+                        <label class="form-label">Foram feitas ações imediatas?</label>
+                        <textarea class="form-control" name="acoes_imediatas" rows="2" placeholder="Quais medidas foram tomadas na hora?"></textarea>
+                    </div>
+                    <div class="col-md-12 mb-3">
+                        <label class="form-label">Implicações?</label>
+                        <textarea class="form-control" name="implicacoes" rows="2" placeholder="Quais as consequências deste evento?"></textarea>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-success btn-lg w-100" id="saveButton">
+                    Enviar Notificação / Salvar no Banco
+                </button>
+
+            </form>
+        </div>
+    </main>
+
+    <script>
+        // CONFIGURAÇÃO ATUALIZADA PARA O PROJETO gestaoeventos-a5ddf
+        const firebaseConfig = {
+            apiKey: "AIzaSyBwqk2Yf2xCA1IrNRv5AgYCPU-6CSt1FTs",
+            authDomain: "gestaoeventos-a5ddf.firebaseapp.com",
+            projectId: "gestaoeventos-a5ddf",
+            storageBucket: "gestaoeventos-a5ddf.firebasestorage.app",
+            messagingSenderId: "963856052375",
+            appId: "1:963856052375:web:bed2c8c06e4b7b71a2f9d2",
+            measurementId: "G-261ZTL5FEE"
+        };
+
+        const app = firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        
+        // COLEÇÃO ATUALIZADA CONFORME IMAGEM DO BANCO DE DADOS
+        const COLECAO = 'eventos_notificacoes'; 
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const form = document.getElementById('cadastroForm');
+            const statusMessage = document.getElementById('statusMessage');
+
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const btnSalvar = document.getElementById('saveButton');
+                btnSalvar.disabled = true;
+
+                const formData = new FormData(form);
+                const dataToSave = {};
+                
+                const notificadosArray = [];
+                document.querySelectorAll('input[name="notificar_quem"]:checked').forEach((checkbox) => {
+                    notificadosArray.push(checkbox.value);
+                });
+
+                formData.forEach((value, key) => {
+                    if (key !== 'notificar_quem') {
+                        // Se for campo de data, salva o valor original do calendário
+                        if (key === 'data_ocorrencia') {
+                            dataToSave[key] = value;
+                        } else {
+                            // Converte todos os outros campos de texto/select para MAIÚSCULAS
+                            dataToSave[key] = String(value).toUpperCase().trim();
+                        }
+                    }
+                });
+
+                dataToSave["notificados"] = notificadosArray;
+                dataToSave["carimbo_data_hora"] = new Date().toISOString();
+                dataToSave["status_processamento"] = "PENDENTE";
+
+                statusMessage.style.display = 'block';
+                statusMessage.className = 'alert alert-info';
+                statusMessage.textContent = 'Enviando notificação para o sistema...';
+
+                try {
+                    const docRef = await db.collection(COLECAO).add(dataToSave);
+                    statusMessage.className = 'alert alert-success';
+                    statusMessage.textContent = `Sucesso! Notificação registrada com sucesso. ID: ${docRef.id}`;
+                    form.reset();
+                    window.scrollTo(0, 0);
+
+                } catch (error) {
+                    statusMessage.className = 'alert alert-danger';
+                    statusMessage.textContent = `Erro técnico ao salvar: ${error.message}`; 
+                } finally {
+                    btnSalvar.disabled = false;
+                }
+            });
+        });
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
