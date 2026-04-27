@@ -49,8 +49,18 @@
             margin-bottom: 25px;
             height: 380px !important; 
             position: relative;
-            overflow: hidden;
+            /* Removido overflow:hidden para permitir que as legendas apareçam se necessário */
+            display: flex;
+            flex-direction: column;
         }
+
+        /* Garante que o gráfico ocupe o espaço corretamente sem vazar */
+        canvas {
+            max-width: 100% !important;
+            max-height: 100% !important;
+            margin: auto;
+        }
+
         .table-container { background: white; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); margin-top: 20px; }
         .status-badge { font-size: 0.75rem; padding: 5px 10px; border-radius: 20px; font-weight: bold; }
     </style>
@@ -221,7 +231,6 @@
         let chartUnidades, chartCategorias, chartLinha, chartPizzaStatus;
         let todosDados = [];
 
-        // Snapshot do Firebase
         const q = query(collection(db, COLECAO), orderBy("carimbo_tempo", "desc"));
         onSnapshot(q, (snapshot) => {
             todosDados = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -243,7 +252,7 @@
         function aplicarFiltros() {
             const unidade = document.getElementById('filtroUnidade').value;
             const status = document.getElementById('filtroStatus').value;
-            const mesRef = document.getElementById('filtroMes').value; // Formato YYYY-MM
+            const mesRef = document.getElementById('filtroMes').value;
 
             let filtrados = todosDados.filter(d => {
                 const matchUnidade = unidade === 'TODAS' || d.local_ocorrencia === unidade;
@@ -262,7 +271,6 @@
             renderizarTabela(filtrados);
         }
 
-        // Listeners para filtros
         document.querySelectorAll('.filter-bar select, .filter-bar input').forEach(el => {
             el.addEventListener('change', aplicarFiltros);
         });
@@ -305,7 +313,7 @@
                 options: { indexAxis: 'y', maintainAspectRatio: false, plugins: { legend: { display: false } } }
             });
 
-            // 2. Gráfico de Pizza (Status) - NOVO
+            // 2. Gráfico de Pizza (Status) - CORREÇÃO DE MARGEM REALIZADA AQUI
             const statusMap = dados.reduce((acc, d) => {
                 const s = d.status_processamento || 'PENDENTE';
                 acc[s] = (acc[s] || 0) + 1;
@@ -321,10 +329,21 @@
                         backgroundColor: ['#f1c40f', '#3498db', '#2ecc71', '#95a5a6']
                     }]
                 },
-                options: { maintainAspectRatio: false, plugins: { legend: { position: 'right' } } }
+                options: { 
+                    maintainAspectRatio: false, 
+                    layout: {
+                        padding: { top: 10, bottom: 20, left: 10, right: 10 }
+                    },
+                    plugins: { 
+                        legend: { 
+                            position: 'bottom', // Mudado para bottom para ganhar espaço lateral
+                            labels: { boxWidth: 12, font: { size: 11 } }
+                        } 
+                    } 
+                }
             });
 
-            // 3. Gráfico de Linha (Evolução) - NOVO
+            // 3. Gráfico de Linha (Evolução)
             const datasMap = dados.reduce((acc, d) => {
                 if(d.data_ocorrencia) acc[d.data_ocorrencia] = (acc[d.data_ocorrencia] || 0) + 1;
                 return acc;
@@ -383,7 +402,7 @@
                         <td><span class="status-badge ${statusColor} text-white">${d.status_processamento || 'PENDENTE'}</span></td>
                         <td>
                             <button class="btn btn-sm btn-outline-primary" onclick="abrirModalTratativa('${d.id}', '${d.status_processamento}', '${d.comentarios_admin || ''}')">
-                                Detalhes
+                                Tratar
                             </button>
                         </td>
                     </tr>
@@ -391,7 +410,6 @@
             });
         }
 
-        // Funções Globais para o Modal
         window.abrirModalTratativa = function(id, status, comentario) {
             document.getElementById('editDocId').value = id;
             document.getElementById('editStatus').value = status || 'PENDENTE';
