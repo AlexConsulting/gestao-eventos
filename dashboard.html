@@ -237,36 +237,28 @@
         let chartUnidades, chartCategorias, chartLinha, chartPizzaStatus;
         let todosDados = [];
 
-        // Início da escuta do Firebase
-        const q = query(collection(db, COLECAO), orderBy("carimbo_tempo", "desc"));
+        // 🔹 CORREÇÃO: "carimbo_data_hora" é o campo correto no seu banco
+        const q = query(collection(db, COLECAO), orderBy("carimbo_data_hora", "desc"));
+        
         onSnapshot(q, (snapshot) => {
             todosDados = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
             
-            console.log("Registros vindos do Firebase:", todosDados.length);
-            console.log("Dados recebidos:", todosDados);
+            console.log("Registros carregados:", todosDados.length);
 
             popularFiltroUnidades(todosDados);
             aplicarFiltros();
         });
 
-        // 🔹 FUNÇÃO PARA APLICAR MÁSCARA DE TELEFONE
         function aplicarMascaraTelefone(valor) {
             if (!valor) return "N/I";
-            let v = valor.replace(/\D/g, ""); // Remove tudo que não é número
-            
+            let v = valor.replace(/\D/g, "");
             if (v.length > 11) v = v.substring(0, 11);
 
-            if (v.length === 11) {
-                // Celular: (XX) XXXXX-XXXX
-                return v.replace(/^(\d{2})(\d{5})(\d{4})$/, "($1) $2-$3");
-            } else if (v.length === 10) {
-                // Fixo: (XX) XXXX-XXXX
-                return v.replace(/^(\d{2})(\d{4})(\d{4})$/, "($1) $2-$3");
-            }
-            return v; // Caso tenha menos dígitos, retorna o que tem
+            if (v.length === 11) return v.replace(/^(\d{2})(\d{5})(\d{4})$/, "($1) $2-$3");
+            if (v.length === 10) return v.replace(/^(\d{2})(\d{4})(\d{4})$/, "($1) $2-$3");
+            return v;
         }
 
-        // 🔹 FORMATADOR EM TEMPO REAL NO MODAL
         document.getElementById('editTelefone').addEventListener('input', (e) => {
             let v = e.target.value.replace(/\D/g, "");
             if (v.length > 11) v = v.substring(0, 11);
@@ -307,8 +299,6 @@
                 return matchUnidade && matchStatus && matchData;
             });
 
-            console.log("Registros após filtros:", filtrados.length);
-
             atualizarKPIs(filtrados);
             renderizarGraficos(filtrados);
             renderizarTabela(filtrados);
@@ -323,7 +313,7 @@
             document.getElementById('kpiTotal').innerText = total;
             
             document.getElementById('kpiAdm').innerText = dados.filter(d => 
-                d.tipo_evento === 'ADMINISTRATIVO' || (d.tipo_evento && d.tipo_evento.startsWith('ADMINISTRATIVO'))
+                (d.tipo_evento && d.tipo_evento.includes('ADMINISTRATIVO'))
             ).length;
 
             document.getElementById('kpiAssist').innerText = dados.filter(d => 
@@ -341,6 +331,7 @@
             if (chartLinha) chartLinha.destroy();
             if (chartPizzaStatus) chartPizzaStatus.destroy();
 
+            // Gráfico Unidades
             const unidadesMap = dados.reduce((acc, d) => {
                 acc[d.local_ocorrencia || 'N/I'] = (acc[d.local_ocorrencia || 'N/I'] || 0) + 1;
                 return acc;
@@ -355,6 +346,7 @@
                 options: { indexAxis: 'y', maintainAspectRatio: false, plugins: { legend: { display: false } } }
             });
 
+            // Gráfico Status
             const statusMap = dados.reduce((acc, d) => {
                 const s = d.status_processamento || 'PENDENTE';
                 acc[s] = (acc[s] || 0) + 1;
@@ -370,18 +362,10 @@
                         backgroundColor: ['#f1c40f', '#3498db', '#2ecc71', '#95a5a6']
                     }]
                 },
-                options: { 
-                    maintainAspectRatio: false, 
-                    layout: { padding: { top: 10, bottom: 20, left: 10, right: 10 } },
-                    plugins: { 
-                        legend: { 
-                            position: 'bottom',
-                            labels: { boxWidth: 12, font: { size: 11 } }
-                        } 
-                    } 
-                }
+                options: { maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
             });
 
+            // Gráfico Linha
             const datasMap = dados.reduce((acc, d) => {
                 if(d.data_ocorrencia) acc[d.data_ocorrencia] = (acc[d.data_ocorrencia] || 0) + 1;
                 return acc;
@@ -404,6 +388,7 @@
                 options: { maintainAspectRatio: false }
             });
 
+            // Gráfico Categorias
             const catMap = dados.reduce((acc, d) => {
                 acc[d.tipo_evento || 'Outros'] = (acc[d.tipo_evento || 'Outros'] || 0) + 1;
                 return acc;
@@ -413,9 +398,9 @@
                 type: 'doughnut',
                 data: {
                     labels: Object.keys(catMap),
-                    datasets: [{ data: Object.values(catMap), backgroundColor: ['#2c3e50', '#27ae60', '#e67e22', '#e74c3c', '#3498db', '#9b59b6'] }]
+                    datasets: [{ data: Object.values(catMap), backgroundColor: ['#2c3e50', '#27ae60', '#e67e22', '#e74c3c', '#3498db'] }]
                 },
-                options: { maintainAspectRatio: false, layout: { padding: 20 }, plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } } }
+                options: { maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
             });
         }
 
@@ -424,21 +409,20 @@
             document.getElementById('contadorTabela').innerText = `Exibindo ${dados.length} registros`;
             tbody.innerHTML = '';
             
-            dados.slice(0, 20).forEach(d => {
+            dados.forEach(d => {
                 const dataFormatada = d.data_ocorrencia ? d.data_ocorrencia.split('-').reverse().join('/') : '---';
                 const statusColor = d.status_processamento === 'CONCLUÍDO' ? 'bg-success' : 
                                    d.status_processamento === 'EM ANÁLISE' ? 'bg-warning text-dark' : 
                                    d.status_processamento === 'CANCELADO' ? 'bg-secondary' : 'bg-info';
                 
-                // 🔹 APLICAÇÃO DA MÁSCARA NA TABELA
-                const telOriginal = d.telefone_notificado || d["Telefone do Notificado"] || "";
+                const telOriginal = d.telefone_notificado || "";
                 const telMascara = aplicarMascaraTelefone(telOriginal);
 
                 tbody.innerHTML += `
                     <tr>
                         <td class="small fw-bold">${dataFormatada}</td>
                         <td class="small">${d.local_ocorrencia || '-'}</td>
-                        <td class="small text-truncate" style="max-width: 150px;">${d.tipo_evento || '-'}</td>
+                        <td class="small">${d.tipo_evento || '-'}</td>
                         <td class="small">${d.nome_notificante || '-'}</td>
                         <td class="small">${telMascara}</td>
                         <td><span class="status-badge ${statusColor} text-white">${d.status_processamento || 'PENDENTE'}</span></td>
@@ -456,13 +440,9 @@
             document.getElementById('editDocId').value = id;
             document.getElementById('editStatus').value = status || 'PENDENTE';
             document.getElementById('editComentario').value = comentario || '';
-            
-            // Aqui passamos o telefone original para o campo, que será formatado pelo evento 'input' acima
             const telInput = document.getElementById('editTelefone');
             telInput.value = telefone || '';
-            // Disparamos o evento manual para que ele formate assim que abrir
             telInput.dispatchEvent(new Event('input'));
-
             new bootstrap.Modal(document.getElementById('modalTratativa')).show();
         };
 
@@ -470,14 +450,18 @@
             const id = document.getElementById('editDocId').value;
             const docRef = doc(db, COLECAO, id);
             
-            await updateDoc(docRef, {
-                status_processamento: document.getElementById('editStatus').value,
-                comentarios_admin: document.getElementById('editComentario').value,
-                telefone_notificado: document.getElementById('editTelefone').value,
-                data_tratativa: new Date().toLocaleString('pt-BR')
-            });
-            
-            bootstrap.Modal.getInstance(document.getElementById('modalTratativa')).hide();
+            try {
+                await updateDoc(docRef, {
+                    status_processamento: document.getElementById('editStatus').value,
+                    comentarios_admin: document.getElementById('editComentario').value,
+                    telefone_notificado: document.getElementById('editTelefone').value,
+                    data_tratativa: new Date().toLocaleString('pt-BR')
+                });
+                bootstrap.Modal.getInstance(document.getElementById('modalTratativa')).hide();
+            } catch (error) {
+                console.error("Erro ao salvar:", error);
+                alert("Erro ao atualizar documento.");
+            }
         });
 
     </script>
