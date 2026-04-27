@@ -34,7 +34,7 @@
             padding: 20px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.08);
             margin-bottom: 25px;
-            height: 400px !important; /* Altura fixa adicionada para impedir o loop de redimensionamento da tela */
+            height: 400px !important; 
             position: relative;
         }
         .table-container { background: white; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); margin-top: 20px; }
@@ -116,8 +116,7 @@
                             <th>Ações</th>
                         </tr>
                     </thead>
-                    <tbody>
-                        </tbody>
+                    <tbody></tbody>
                 </table>
             </div>
         </div>
@@ -173,8 +172,7 @@
 
         let chartUnidades, chartCategorias;
 
-        // Escuta em Tempo Real
-        const q = query(collection(db, COLECAO), orderBy("carimbo_data_hora", "desc"));
+        const q = query(collection(db, COLECAO), orderBy("carimbo_tempo", "desc"));
         onSnapshot(q, (snapshot) => {
             const dados = snapshot.docs.map(d => ({
                 id: d.id,
@@ -183,7 +181,6 @@
             atualizarDashboard(dados);
         });
 
-        // Funções Globais para o Modal
         window.abrirModalTratativa = function(id, status, comentario) {
             document.getElementById('editDocId').value = id;
             document.getElementById('editStatus').value = status || 'PENDENTE';
@@ -213,9 +210,22 @@
 
         function atualizarDashboard(dados) {
             document.getElementById('kpiTotal').innerText = dados.length;
-            document.getElementById('kpiAdm').innerText = dados.filter(d => d.tipo_evento?.includes('ADMINISTRATIVO')).length;
-            document.getElementById('kpiAssist').innerText = dados.filter(d => d.tipo_evento === 'ASSISTENCIAL').length;
-            document.getElementById('kpiTI').innerText = dados.filter(d => d.tipo_evento?.includes('TI')).length;
+            
+            // Filtro preciso para ADMINISTRATIVO
+            document.getElementById('kpiAdm').innerText = dados.filter(d => 
+                d.tipo_evento === 'ADMINISTRATIVO' || (d.tipo_evento && d.tipo_evento.startsWith('ADMINISTRATIVO'))
+            ).length;
+
+            // Filtro preciso para ASSISTENCIAL
+            document.getElementById('kpiAssist').innerText = dados.filter(d => 
+                d.tipo_evento === 'ASSISTENCIAL'
+            ).length;
+
+            // CORREÇÃO: Filtro preciso para TI (evita contar o 'TI' de ADMINISTRA-TI-VO)
+            document.getElementById('kpiTI').innerText = dados.filter(d => {
+                const tipo = d.tipo_evento || "";
+                return tipo === 'TI' || tipo.startsWith('TI -') || tipo.includes('PROBLEMA DE TI');
+            }).length;
 
             renderizarGraficos(dados);
             renderizarTabela(dados);
@@ -276,7 +286,8 @@
             dados.slice(0, 10).forEach(d => {
                 const dataFormatada = d.data_ocorrencia ? d.data_ocorrencia.split('-').reverse().join('/') : '---';
                 const statusColor = d.status_processamento === 'CONCLUÍDO' ? 'bg-success' : 
-                                   d.status_processamento === 'EM ANÁLISE' ? 'bg-warning' : 'bg-info';
+                                   d.status_processamento === 'EM ANÁLISE' ? 'bg-warning' : 
+                                   d.status_processamento === 'CANCELADO' ? 'bg-secondary' : 'bg-info';
                 
                 tbody.innerHTML += `
                     <tr>
