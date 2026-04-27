@@ -13,10 +13,21 @@
             --header-dark: #2c3e50;
             --accent-green: #27ae60;
             --accent-red: #e74c3c;
+            --white: #ffffff;
         }
         body { background-color: var(--bg-light); font-family: 'Inter', sans-serif; }
         .dashboard-header { background: var(--header-dark); color: white; padding: 25px 0; border-bottom: 5px solid var(--accent-green); }
         
+        .filter-bar {
+            background: var(--white);
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: -30px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            z-index: 1000;
+            position: relative;
+        }
+
         .kpi-card {
             background: white;
             border-radius: 10px;
@@ -24,7 +35,9 @@
             box-shadow: 0 4px 6px rgba(0,0,0,0.05);
             text-align: center;
             border-top: 4px solid var(--accent-green);
+            transition: transform 0.2s;
         }
+        .kpi-card:hover { transform: translateY(-5px); }
         .kpi-value { font-size: 2.2rem; font-weight: 800; color: var(--header-dark); }
         .kpi-label { color: #7f8c8d; font-size: 0.85rem; font-weight: 600; text-transform: uppercase; }
 
@@ -34,9 +47,9 @@
             padding: 20px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.08);
             margin-bottom: 25px;
-            height: 400px !important; 
+            height: 380px !important; 
             position: relative;
-            overflow: hidden; /* Evita que o gráfico transborde visualmente */
+            overflow: hidden;
         }
         .table-container { background: white; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); margin-top: 20px; }
         .status-badge { font-size: 0.75rem; padding: 5px 10px; border-radius: 20px; font-weight: bold; }
@@ -44,8 +57,8 @@
 </head>
 <body>
 
-    <header class="dashboard-header mb-4">
-        <div class="container d-flex justify-content-between align-items-center">
+    <header class="dashboard-header">
+        <div class="container d-flex justify-content-between align-items-center mb-4">
             <div>
                 <h1 class="h3 mb-0">Monitoramento de Eventos e Ocorrências</h1>
                 <p class="mb-0 opacity-75">Visão Executiva de Incidentes e Fluxos Administrativos</p>
@@ -58,10 +71,32 @@
     </header>
 
     <main class="container">
+        <div class="filter-bar mb-4 row g-3">
+            <div class="col-md-4">
+                <label class="form-label small fw-bold">Filtrar por Unidade</label>
+                <select id="filtroUnidade" class="form-select form-select-sm">
+                    <option value="TODAS">Todas as Unidades</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small fw-bold">Status da Tratativa</label>
+                <select id="filtroStatus" class="form-select form-select-sm">
+                    <option value="TODOS">Todos os Status</option>
+                    <option value="PENDENTE">PENDENTE</option>
+                    <option value="EM ANÁLISE">EM ANÁLISE</option>
+                    <option value="CONCLUÍDO">CONCLUÍDO</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label small fw-bold">Período</label>
+                <input type="month" id="filtroMes" class="form-control form-select-sm">
+            </div>
+        </div>
+
         <div class="row mb-4">
             <div class="col-md-3">
                 <div class="kpi-card">
-                    <div class="kpi-label">Total de Eventos</div>
+                    <div class="kpi-label">Total Filtrado</div>
                     <div class="kpi-value" id="kpiTotal">0</div>
                 </div>
             </div>
@@ -73,37 +108,49 @@
             </div>
             <div class="col-md-3">
                 <div class="kpi-card" style="border-top-color: #e74c3c">
-                    <div class="kpi-label">Eventos Assistenciais</div>
+                    <div class="kpi-label">Assistenciais</div>
                     <div class="kpi-value" id="kpiAssist">0</div>
                 </div>
             </div>
             <div class="col-md-3">
                 <div class="kpi-card" style="border-top-color: #3498db">
-                    <div class="kpi-label">Problemas de TI</div>
-                    <div class="kpi-value" id="kpiTI">0</div>
+                    <div class="kpi-label">Resolvidos (%)</div>
+                    <div class="kpi-value" id="kpiEficiencia">0%</div>
                 </div>
             </div>
         </div>
 
         <div class="row">
+            <div class="col-lg-6">
+                <div class="chart-container">
+                    <h6 class="fw-bold mb-3">Tendência Temporal (Ocorrências/Dia)</h6>
+                    <canvas id="chartLinha"></canvas>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="chart-container">
+                    <h6 class="fw-bold mb-3">Status de Processamento</h6>
+                    <canvas id="chartPizzaStatus"></canvas>
+                </div>
+            </div>
             <div class="col-lg-7">
                 <div class="chart-container">
-                    <h5 class="fw-bold mb-4">Volume de Ocorrências por Unidade</h5>
+                    <h6 class="fw-bold mb-3">Volume por Unidade</h6>
                     <canvas id="chartUnidades"></canvas>
                 </div>
             </div>
             <div class="col-lg-5">
                 <div class="chart-container">
-                    <h5 class="fw-bold mb-4">Distribuição por Categoria</h5>
+                    <h6 class="fw-bold mb-3">Distribuição por Categoria</h6>
                     <canvas id="chartCategorias"></canvas>
                 </div>
             </div>
         </div>
 
         <div class="table-container mb-5">
-            <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
-                <h5 class="mb-0 fw-bold">Log de Eventos Recentes</h5>
-                <span class="text-muted small">Mostrando as últimas 10 notificações</span>
+            <div class="p-3 border-bottom d-flex justify-content-between align-items-center text-white bg-dark rounded-top">
+                <h5 class="mb-0 fw-bold">Log de Eventos Detalhado</h5>
+                <span id="contadorTabela" class="small"></span>
             </div>
             <div class="table-responsive">
                 <table class="table table-hover align-middle mb-0" id="tabelaEventos">
@@ -111,7 +158,7 @@
                         <tr>
                             <th>Data</th>
                             <th>Unidade</th>
-                            <th>Tipo de Evento</th>
+                            <th>Tipo</th>
                             <th>Notificante</th>
                             <th>Status</th>
                             <th>Ações</th>
@@ -143,7 +190,7 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-bold">Comentários/Conduta do Admin</label>
-                        <textarea id="editComentario" class="form-control" rows="4" placeholder="Descreva as ações tomadas..."></textarea>
+                        <textarea id="editComentario" class="form-control" rows="4"></textarea>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -171,46 +218,58 @@
         const db = getFirestore(app);
         const COLECAO = 'eventos_notificacoes';
 
-        let chartUnidades, chartCategorias;
+        let chartUnidades, chartCategorias, chartLinha, chartPizzaStatus;
+        let todosDados = [];
 
+        // Snapshot do Firebase
         const q = query(collection(db, COLECAO), orderBy("carimbo_tempo", "desc"));
         onSnapshot(q, (snapshot) => {
-            const dados = snapshot.docs.map(d => ({
-                id: d.id,
-                ...d.data()
-            }));
-            atualizarDashboard(dados);
+            todosDados = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+            popularFiltroUnidades(todosDados);
+            aplicarFiltros();
         });
 
-        window.abrirModalTratativa = function(id, status, comentario) {
-            document.getElementById('editDocId').value = id;
-            document.getElementById('editStatus').value = status || 'PENDENTE';
-            document.getElementById('editComentario').value = comentario || '';
-            const modal = new bootstrap.Modal(document.getElementById('modalTratativa'));
-            modal.show();
-        };
+        function popularFiltroUnidades(dados) {
+            const select = document.getElementById('filtroUnidade');
+            const unidades = [...new Set(dados.map(d => d.local_ocorrencia).filter(Boolean))];
+            const valorAtual = select.value;
+            select.innerHTML = '<option value="TODAS">Todas as Unidades</option>';
+            unidades.sort().forEach(u => {
+                select.innerHTML += `<option value="${u}">${u}</option>`;
+            });
+            select.value = valorAtual;
+        }
 
-        document.getElementById('btnSalvarTratativa').addEventListener('click', async () => {
-            const id = document.getElementById('editDocId').value;
-            const novoStatus = document.getElementById('editStatus').value;
-            const novoComentario = document.getElementById('editComentario').value;
+        function aplicarFiltros() {
+            const unidade = document.getElementById('filtroUnidade').value;
+            const status = document.getElementById('filtroStatus').value;
+            const mesRef = document.getElementById('filtroMes').value; // Formato YYYY-MM
 
-            try {
-                const docRef = doc(db, COLECAO, id);
-                await updateDoc(docRef, {
-                    status_processamento: novoStatus,
-                    comentarios_admin: novoComentario,
-                    data_tratativa: new Date().toLocaleString('pt-BR')
-                });
-                bootstrap.Modal.getInstance(document.getElementById('modalTratativa')).hide();
-            } catch (e) {
-                console.error("Erro ao atualizar: ", e);
-                alert("Erro ao salvar dados.");
-            }
+            let filtrados = todosDados.filter(d => {
+                const matchUnidade = unidade === 'TODAS' || d.local_ocorrencia === unidade;
+                const matchStatus = status === 'TODOS' || d.status_processamento === status;
+                
+                let matchData = true;
+                if(mesRef && d.data_ocorrencia) {
+                    matchData = d.data_ocorrencia.startsWith(mesRef);
+                }
+
+                return matchUnidade && matchStatus && matchData;
+            });
+
+            atualizarKPIs(filtrados);
+            renderizarGraficos(filtrados);
+            renderizarTabela(filtrados);
+        }
+
+        // Listeners para filtros
+        document.querySelectorAll('.filter-bar select, .filter-bar input').forEach(el => {
+            el.addEventListener('change', aplicarFiltros);
         });
 
-        function atualizarDashboard(dados) {
-            document.getElementById('kpiTotal').innerText = dados.length;
+        function atualizarKPIs(dados) {
+            const total = dados.length;
+            document.getElementById('kpiTotal').innerText = total;
             
             document.getElementById('kpiAdm').innerText = dados.filter(d => 
                 d.tipo_evento === 'ADMINISTRATIVO' || (d.tipo_evento && d.tipo_evento.startsWith('ADMINISTRATIVO'))
@@ -220,22 +279,20 @@
                 d.tipo_evento === 'ASSISTENCIAL'
             ).length;
 
-            document.getElementById('kpiTI').innerText = dados.filter(d => {
-                const tipo = d.tipo_evento || "";
-                return tipo === 'TI' || tipo.startsWith('TI -') || tipo.includes('PROBLEMA DE TI');
-            }).length;
-
-            renderizarGraficos(dados);
-            renderizarTabela(dados);
+            const concluidos = dados.filter(d => d.status_processamento === 'CONCLUÍDO').length;
+            const eficiencia = total > 0 ? Math.round((concluidos / total) * 100) : 0;
+            document.getElementById('kpiEficiencia').innerText = eficiencia + '%';
         }
 
         function renderizarGraficos(dados) {
             if (chartUnidades) chartUnidades.destroy();
             if (chartCategorias) chartCategorias.destroy();
+            if (chartLinha) chartLinha.destroy();
+            if (chartPizzaStatus) chartPizzaStatus.destroy();
 
+            // 1. Gráfico de Barras (Unidades)
             const unidadesMap = dados.reduce((acc, d) => {
-                const local = d.local_ocorrencia || "Não Informado";
-                acc[local] = (acc[local] || 0) + 1;
+                acc[d.local_ocorrencia || 'N/I'] = (acc[d.local_ocorrencia || 'N/I'] || 0) + 1;
                 return acc;
             }, {});
 
@@ -243,23 +300,56 @@
                 type: 'bar',
                 data: {
                     labels: Object.keys(unidadesMap),
-                    datasets: [{
-                        label: 'Ocorrências',
-                        data: Object.values(unidadesMap),
-                        backgroundColor: '#27ae60'
-                    }]
+                    datasets: [{ label: 'Qtd', data: Object.values(unidadesMap), backgroundColor: '#27ae60' }]
                 },
-                options: { 
-                    indexAxis: 'y', 
-                    maintainAspectRatio: false,
-                    layout: { padding: { right: 20 } },
-                    plugins: { legend: { display: false } } 
-                }
+                options: { indexAxis: 'y', maintainAspectRatio: false, plugins: { legend: { display: false } } }
             });
 
+            // 2. Gráfico de Pizza (Status) - NOVO
+            const statusMap = dados.reduce((acc, d) => {
+                const s = d.status_processamento || 'PENDENTE';
+                acc[s] = (acc[s] || 0) + 1;
+                return acc;
+            }, {});
+
+            chartPizzaStatus = new Chart(document.getElementById('chartPizzaStatus'), {
+                type: 'pie',
+                data: {
+                    labels: Object.keys(statusMap),
+                    datasets: [{
+                        data: Object.values(statusMap),
+                        backgroundColor: ['#f1c40f', '#3498db', '#2ecc71', '#95a5a6']
+                    }]
+                },
+                options: { maintainAspectRatio: false, plugins: { legend: { position: 'right' } } }
+            });
+
+            // 3. Gráfico de Linha (Evolução) - NOVO
+            const datasMap = dados.reduce((acc, d) => {
+                if(d.data_ocorrencia) acc[d.data_ocorrencia] = (acc[d.data_ocorrencia] || 0) + 1;
+                return acc;
+            }, {});
+            const datasOrdenadas = Object.keys(datasMap).sort();
+
+            chartLinha = new Chart(document.getElementById('chartLinha'), {
+                type: 'line',
+                data: {
+                    labels: datasOrdenadas.map(d => d.split('-').reverse().slice(0,2).join('/')),
+                    datasets: [{ 
+                        label: 'Eventos', 
+                        data: datasOrdenadas.map(d => datasMap[d]),
+                        borderColor: '#2c3e50',
+                        tension: 0.3,
+                        fill: true,
+                        backgroundColor: 'rgba(44, 62, 80, 0.05)'
+                    }]
+                },
+                options: { maintainAspectRatio: false }
+            });
+
+            // 4. Gráfico de Rosca (Categorias)
             const catMap = dados.reduce((acc, d) => {
-                const tipo = d.tipo_evento || "Outros";
-                acc[tipo] = (acc[tipo] || 0) + 1;
+                acc[d.tipo_evento || 'Outros'] = (acc[d.tipo_evento || 'Outros'] || 0) + 1;
                 return acc;
             }, {});
 
@@ -267,56 +357,59 @@
                 type: 'doughnut',
                 data: {
                     labels: Object.keys(catMap),
-                    datasets: [{
-                        data: Object.values(catMap),
-                        backgroundColor: ['#2c3e50', '#27ae60', '#e67e22', '#e74c3c', '#3498db', '#9b59b6']
-                    }]
+                    datasets: [{ data: Object.values(catMap), backgroundColor: ['#2c3e50', '#27ae60', '#e67e22', '#e74c3c', '#3498db', '#9b59b6'] }]
                 },
-                options: {
-                    maintainAspectRatio: false,
-                    layout: {
-                        padding: 30 // Espaço extra para o gráfico não cortar
-                    },
-                    plugins: {
-                        legend: {
-                            position: 'top',
-                            labels: {
-                                boxWidth: 12,
-                                padding: 15,
-                                font: { size: 11 }
-                            }
-                        }
-                    }
-                }
+                options: { maintainAspectRatio: false, layout: { padding: 20 }, plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } } }
             });
         }
 
         function renderizarTabela(dados) {
             const tbody = document.querySelector('#tabelaEventos tbody');
+            document.getElementById('contadorTabela').innerText = `Exibindo ${dados.length} registros`;
             tbody.innerHTML = '';
             
-            dados.slice(0, 10).forEach(d => {
+            dados.slice(0, 20).forEach(d => {
                 const dataFormatada = d.data_ocorrencia ? d.data_ocorrencia.split('-').reverse().join('/') : '---';
                 const statusColor = d.status_processamento === 'CONCLUÍDO' ? 'bg-success' : 
-                                   d.status_processamento === 'EM ANÁLISE' ? 'bg-warning' : 
+                                   d.status_processamento === 'EM ANÁLISE' ? 'bg-warning text-dark' : 
                                    d.status_processamento === 'CANCELADO' ? 'bg-secondary' : 'bg-info';
                 
                 tbody.innerHTML += `
                     <tr>
                         <td class="small fw-bold">${dataFormatada}</td>
-                        <td>${d.local_ocorrencia || '-'}</td>
-                        <td class="small text-truncate" style="max-width: 200px;">${d.tipo_evento || '-'}</td>
+                        <td class="small">${d.local_ocorrencia || '-'}</td>
+                        <td class="small text-truncate" style="max-width: 150px;">${d.tipo_evento || '-'}</td>
                         <td class="small">${d.nome_notificante || '-'}</td>
                         <td><span class="status-badge ${statusColor} text-white">${d.status_processamento || 'PENDENTE'}</span></td>
                         <td>
-                            <button class="btn btn-sm btn-primary" onclick="abrirModalTratativa('${d.id}', '${d.status_processamento}', '${d.comentarios_admin || ''}')">
-                                Tratar
+                            <button class="btn btn-sm btn-outline-primary" onclick="abrirModalTratativa('${d.id}', '${d.status_processamento}', '${d.comentarios_admin || ''}')">
+                                Detalhes
                             </button>
                         </td>
                     </tr>
                 `;
             });
         }
+
+        // Funções Globais para o Modal
+        window.abrirModalTratativa = function(id, status, comentario) {
+            document.getElementById('editDocId').value = id;
+            document.getElementById('editStatus').value = status || 'PENDENTE';
+            document.getElementById('editComentario').value = comentario || '';
+            new bootstrap.Modal(document.getElementById('modalTratativa')).show();
+        };
+
+        document.getElementById('btnSalvarTratativa').addEventListener('click', async () => {
+            const id = document.getElementById('editDocId').value;
+            const docRef = doc(db, COLECAO, id);
+            await updateDoc(docRef, {
+                status_processamento: document.getElementById('editStatus').value,
+                comentarios_admin: document.getElementById('editComentario').value,
+                data_tratativa: new Date().toLocaleString('pt-BR')
+            });
+            bootstrap.Modal.getInstance(document.getElementById('modalTratativa')).hide();
+        });
+
     </script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 </body>
