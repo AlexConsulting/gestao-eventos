@@ -36,6 +36,7 @@
             margin-bottom: 25px;
             height: 400px !important; 
             position: relative;
+            overflow: hidden; /* Evita que o gráfico transborde visualmente */
         }
         .table-container { background: white; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); margin-top: 20px; }
         .status-badge { font-size: 0.75rem; padding: 5px 10px; border-radius: 20px; font-weight: bold; }
@@ -211,17 +212,14 @@
         function atualizarDashboard(dados) {
             document.getElementById('kpiTotal').innerText = dados.length;
             
-            // Filtro preciso para ADMINISTRATIVO
             document.getElementById('kpiAdm').innerText = dados.filter(d => 
                 d.tipo_evento === 'ADMINISTRATIVO' || (d.tipo_evento && d.tipo_evento.startsWith('ADMINISTRATIVO'))
             ).length;
 
-            // Filtro preciso para ASSISTENCIAL
             document.getElementById('kpiAssist').innerText = dados.filter(d => 
                 d.tipo_evento === 'ASSISTENCIAL'
             ).length;
 
-            // CORREÇÃO: Filtro preciso para TI (evita contar o 'TI' de ADMINISTRA-TI-VO)
             document.getElementById('kpiTI').innerText = dados.filter(d => {
                 const tipo = d.tipo_evento || "";
                 return tipo === 'TI' || tipo.startsWith('TI -') || tipo.includes('PROBLEMA DE TI');
@@ -254,6 +252,7 @@
                 options: { 
                     indexAxis: 'y', 
                     maintainAspectRatio: false,
+                    layout: { padding: { right: 20 } },
                     plugins: { legend: { display: false } } 
                 }
             });
@@ -274,7 +273,20 @@
                     }]
                 },
                 options: {
-                    maintainAspectRatio: false
+                    maintainAspectRatio: false,
+                    layout: {
+                        padding: 30 // Espaço extra para o gráfico não cortar
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                boxWidth: 12,
+                                padding: 15,
+                                font: { size: 11 }
+                            }
+                        }
+                    }
                 }
             });
         }
