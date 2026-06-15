@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diagnóstico de Dados — Eventos/Notificações (SOMENTE LEITURA)</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background:#f1f4f8; font-family:'Inter',sans-serif; }
+        .banner-ro { background:#27ae60; color:#fff; font-weight:700; }
+        .card-sec { background:#fff; border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,.08); padding:20px; margin-bottom:20px; }
+        pre.json { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:.78rem; max-height:340px; overflow:auto; }
+        .freq-rara { background:#fff3cd; }
+        .mono { font-family:ui-monospace,Menlo,Consolas,monospace; }
+        th { white-space:nowrap; }
+        .scroll-tbl { max-height:360px; overflow:auto; }
+    </style>
+</head>
+<body>
+    <div class="banner-ro text-center py-2">🔒 FERRAMENTA DE DIAGNÓSTICO — SOMENTE LEITURA. Nenhum dado é alterado, criado ou apagado.</div>
+
+    <div class="container py-4">
+        <h3 class="fw-bold">Diagnóstico de Dados</h3>
+        <p class="text-muted">Coleção <span class="mono">eventos_notificacoes</span>. Objetivo: mostrar o conteúdo cru de cada registro para verificar se os textos de Unidade/Notificante estão gravados nos campos corretos.</p>
+
+        <div id="status" class="alert alert-info">Verificando sessão e carregando registros…</div>
+
+        <div id="conteudo" style="display:none;">
+            <!-- Resumo -->
+            <div class="row g-3 mb-2" id="resumo"></div>
+
+            <!-- Inventário de campos -->
+            <div class="card-sec">
+                <h5 class="fw-bold">1. Inventário de campos (quais chaves existem no banco)</h5>
+                <p class="small text-muted">Mostra todos os nomes de campo encontrados e em quantos registros cada um aparece. Se a "unidade real" estivesse em outro campo, ele apareceria aqui.</p>
+                <div class="scroll-tbl">
+                    <table class="table table-sm table-hover">
+                        <thead class="table-light"><tr><th>Campo</th><th>Nº de registros</th><th>Exemplos de valor</th></tr></thead>
+                        <tbody id="tblCampos"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Frequência local_ocorrencia -->
+            <div class="card-sec">
+                <h5 class="fw-bold">2. Valores distintos em <span class="mono">local_ocorrencia</span> (Unidade)</h5>
+                <p class="small text-muted">Valores que aparecem só 1 vez (destacados em amarelo) são provavelmente texto digitado no campo errado.</p>
+                <div class="scroll-tbl">
+                    <table class="table table-sm table-hover">
+                        <thead class="table-light"><tr><th>Valor</th><th>Qtd</th></tr></thead>
+                        <tbody id="tblUnidade"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Frequência nome_notificante -->
+            <div class="card-sec">
+                <h5 class="fw-bold">3. Valores distintos em <span class="mono">nome_notificante</span> (Notificante)</h5>
+                <div class="scroll-tbl">
+                    <table class="table table-sm table-hover">
+                        <thead class="table-light"><tr><th>Valor</th><th>Qtd</th></tr></thead>
+                        <tbody id="tblNotificante"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Visualizador de registro bruto -->
+            <div class="card-sec">
+                <h5 class="fw-bold">4. Ver registro cru (JSON completo)</h5>
+                <p class="small text-muted">Digite um trecho de texto (ex.: <span class="mono">Feito material de orientação</span>) para ver o(s) registro(s) inteiro(s) e confirmar em qual campo ele está.</p>
+                <div class="input-group mb-3">
+                    <input type="text" id="busca" class="form-control" placeholder="Buscar por qualquer texto contido no registro…">
+                    <button class="btn btn-dark" id="btnBuscar">Buscar</button>
+                </div>
+                <div id="resultadoBusca"></div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBwqk2Yf2xCA1IrNRv5AgYCPU-6CSt1FTs",
+            authDomain: "gestaoeventos-a5ddf.firebaseapp.com",
+            projectId: "gestaoeventos-a5ddf",
+            storageBucket: "gestaoeventos-a5ddf.firebasestorage.app",
+            messagingSenderId: "963856052375",
+            appId: "1:963856052375:web:bed2c8c06e4b7b71a2f9d2"
+        };
+        const COLECAO = 'eventos_notificacoes';
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        let registros = [];
+
+        function esc(v){ return v==null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+        onAuthStateChanged(auth, async (user) => {
+            const status = document.getElementById('status');
+            if (!user) {
+                status.className = 'alert alert-warning';
+                status.innerHTML = '⚠️ Você não está autenticado nesta origem. Abra o sistema (login.html) na mesma URL/domínio, faça login e recarregue esta página. (A sessão é compartilhada entre as páginas do mesmo site.)';
+                return;
+            }
+            try {
+                const snap = await getDocs(collection(db, COLECAO)); // LEITURA única
+                registros = snap.docs.map(d => ({ __id: d.id, ...d.data() }));
+                status.className = 'alert alert-success';
+                status.innerHTML = `✅ ${registros.length} registros lidos (somente leitura). Usuário: ${esc(user.email || user.uid)}`;
+                document.getElementById('conteudo').style.display = 'block';
+                analisar();
+            } catch (e) {
+                status.className = 'alert alert-danger';
+                status.innerHTML = '❌ Erro ao ler a coleção: ' + esc(e.message) + ' (verifique as regras de leitura do Firestore).';
+            }
+        });
+
+        function analisar() {
+            const total = registros.length;
+
+            // --- Inventário de campos ---
+            const campos = {};
+            registros.forEach(r => {
+                Object.keys(r).forEach(k => {
+                    if (k === '__id') return;
+                    if (!campos[k]) campos[k] = { n:0, exemplos:[] };
+                    campos[k].n++;
+                    const v = r[k];
+                    if (campos[k].exemplos.length < 3 && v !== '' && v != null) {
+                        const txt = typeof v === 'object' ? JSON.stringify(v) : String(v);
+                        campos[k].exemplos.push(txt.slice(0,40));
+                    }
+                });
+            });
+            const tblCampos = document.getElementById('tblCampos');
+            tblCampos.innerHTML = Object.entries(campos).sort((a,b)=>b[1].n-a[1].n).map(([k,info]) =>
+                `<tr><td class="mono">${esc(k)}</td><td>${info.n}</td><td class="small text-muted">${esc(info.exemplos.join('  |  '))}</td></tr>`
+            ).join('');
+
+            // --- Frequências ---
+            const freq = (campo) => {
+                const m = {};
+                registros.forEach(r => { const v = (r[campo]==null||r[campo]==='') ? '(vazio)' : String(r[campo]); m[v]=(m[v]||0)+1; });
+                return Object.entries(m).sort((a,b)=>b[1]-a[1]);
+            };
+            const renderFreq = (tbodyId, pares) => {
+                document.getElementById(tbodyId).innerHTML = pares.map(([v,c]) =>
+                    `<tr class="${c===1 && v!=='(vazio)' ? 'freq-rara' : ''}"><td>${esc(v)}</td><td>${c}</td></tr>`
+                ).join('');
+            };
+            const fUni = freq('local_ocorrencia');
+            const fNot = freq('nome_notificante');
+            renderFreq('tblUnidade', fUni);
+            renderFreq('tblNotificante', fNot);
+
+            // --- Resumo ---
+            const dataInvalida = registros.filter(r => !(r.data_ocorrencia && /^\d{4}-\d{2}-\d{2}/.test(r.data_ocorrencia))).length;
+            const uniRaras = fUni.filter(([v,c]) => c===1 && v!=='(vazio)').length;
+            const notRaros = fNot.filter(([v,c]) => c===1 && v!=='(vazio)').length;
+            const card = (titulo, valor, cor) =>
+                `<div class="col-md-3"><div class="card-sec text-center mb-0"><div class="small text-uppercase text-muted fw-bold">${titulo}</div><div class="fs-3 fw-bold" style="color:${cor}">${valor}</div></div></div>`;
+            document.getElementById('resumo').innerHTML =
+                card('Total de registros', total, '#2c3e50') +
+                card('Data ausente/inválida', dataInvalida, '#e67e22') +
+                card('Unidades que aparecem 1x', uniRaras, '#e74c3c') +
+                card('Notificantes que aparecem 1x', notRaros, '#e74c3c');
+        }
+
+        // --- Busca de registro cru ---
+        document.getElementById('btnBuscar').addEventListener('click', () => {
+            const termo = document.getElementById('busca').value.trim().toLowerCase();
+            const out = document.getElementById('resultadoBusca');
+            if (!termo) { out.innerHTML = '<div class="text-muted small">Digite um texto para buscar.</div>'; return; }
+            const achados = registros.filter(r => JSON.stringify(r).toLowerCase().includes(termo)).slice(0, 10);
+            if (achados.length === 0) { out.innerHTML = '<div class="alert alert-secondary">Nenhum registro encontrado.</div>'; return; }
+            out.innerHTML = `<div class="small text-muted mb-2">Mostrando ${achados.length} registro(s):</div>` +
+                achados.map(r => `<pre class="json">${esc(JSON.stringify(r, null, 2))}</pre>`).join('');
+        });
+        document.getElementById('busca').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('btnBuscar').click(); });
+    </script>
+</body>
+</html>
