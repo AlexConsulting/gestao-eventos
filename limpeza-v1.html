@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Limpeza de Registros — Eventos/Notificações</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background:#f1f4f8; font-family:'Inter',sans-serif; }
+        .banner { background:#e74c3c; color:#fff; font-weight:700; }
+        .card-sec { background:#fff; border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,.08); padding:20px; margin-bottom:20px; }
+        .mono { font-family:ui-monospace,Menlo,Consolas,monospace; }
+        .scroll-tbl { max-height:420px; overflow:auto; }
+        pre.json { background:#0f172a; color:#e2e8f0; padding:10px; border-radius:8px; font-size:.72rem; max-height:200px; overflow:auto; }
+        .val-sel { background:#fde2e1; }
+    </style>
+</head>
+<body>
+    <div class="banner text-center py-2">⚠️ FERRAMENTA DE EXCLUSÃO — a remoção no Firestore é PERMANENTE. Baixe o backup antes de excluir.</div>
+
+    <div class="container py-4">
+        <h3 class="fw-bold">Limpeza de Registros Incorretos</h3>
+        <p class="text-muted">Coleção <span class="mono">eventos_notificacoes</span>. Selecione os <strong>valores incorretos</strong> de Unidade ou Notificante; a ferramenta encontra todos os registros que os contêm e permite excluí-los em lote — <strong>após backup e confirmação</strong>.</p>
+
+        <div class="alert alert-warning">
+            <strong>Atenção:</strong> excluir um registro remove a notificação inteira (data, tipo, descrição…), não apenas o campo errado.
+            Se a intenção for só limpar o campo, prefira corrigir em vez de excluir.
+        </div>
+
+        <div id="status" class="alert alert-info">Verificando sessão e carregando registros…</div>
+
+        <div id="conteudo" style="display:none;">
+            <div class="row">
+                <div class="col-lg-6">
+                    <div class="card-sec">
+                        <h5 class="fw-bold">Valores em <span class="mono">local_ocorrencia</span> (Unidade)</h5>
+                        <p class="small text-muted">Ordenados do mais raro ao mais comum. Marque os que forem texto digitado errado.</p>
+                        <input type="text" class="form-control form-control-sm mb-2" id="filtroUni" placeholder="filtrar valores…">
+                        <div class="scroll-tbl"><table class="table table-sm table-hover mb-0"><tbody id="tblUni"></tbody></table></div>
+                    </div>
+                </div>
+                <div class="col-lg-6">
+                    <div class="card-sec">
+                        <h5 class="fw-bold">Valores em <span class="mono">nome_notificante</span> (Notificante)</h5>
+                        <p class="small text-muted">Ordenados do mais raro ao mais comum. Marque os que forem texto digitado errado.</p>
+                        <input type="text" class="form-control form-control-sm mb-2" id="filtroNot" placeholder="filtrar valores…">
+                        <div class="scroll-tbl"><table class="table table-sm table-hover mb-0"><tbody id="tblNot"></tbody></table></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card-sec">
+                <h5 class="fw-bold">Registros que serão excluídos</h5>
+                <div id="resumoSelecao" class="mb-2 text-muted small">Nenhum valor selecionado.</div>
+                <div class="scroll-tbl mb-3"><table class="table table-sm">
+                    <thead class="table-light"><tr><th>Data</th><th>Unidade</th><th>Tipo</th><th>Notificante</th><th>Descrição</th></tr></thead>
+                    <tbody id="tblPreview"></tbody>
+                </table></div>
+
+                <div class="d-flex gap-2 flex-wrap align-items-center">
+                    <button class="btn btn-outline-dark" id="btnBackup" disabled>1) Baixar backup (JSON) dos selecionados</button>
+                    <span class="text-muted">→</span>
+                    <input type="text" class="form-control" style="max-width:220px" id="confirmTxt" placeholder='digite EXCLUIR' disabled>
+                    <button class="btn btn-danger fw-bold" id="btnExcluir" disabled>2) Excluir registros selecionados</button>
+                </div>
+                <div id="resultado" class="mt-3"></div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, collection, getDocs, doc, writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBwqk2Yf2xCA1IrNRv5AgYCPU-6CSt1FTs",
+            authDomain: "gestaoeventos-a5ddf.firebaseapp.com",
+            projectId: "gestaoeventos-a5ddf",
+            storageBucket: "gestaoeventos-a5ddf.firebasestorage.app",
+            messagingSenderId: "963856052375",
+            appId: "1:963856052375:web:bed2c8c06e4b7b71a2f9d2"
+        };
+        const COLECAO = 'eventos_notificacoes';
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        let registros = [];
+        const selUni = new Set();   // valores de local_ocorrencia selecionados
+        const selNot = new Set();   // valores de nome_notificante selecionados
+
+        const esc = v => v==null ? '' : String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        const VAZIO = '\u0000__EM_BRANCO__';            // sentinela interna para "campo em branco"
+        const isBlank = v => v == null || String(v).trim() === '';
+
+        onAuthStateChanged(auth, async (user) => {
+            const status = document.getElementById('status');
+            if (!user) {
+                status.className = 'alert alert-warning';
+                status.innerHTML = '⚠️ Você não está autenticado nesta origem. Abra o sistema (login.html) na mesma URL, faça login e recarregue esta página.';
+                return;
+            }
+            try {
+                const snap = await getDocs(collection(db, COLECAO));
+                registros = snap.docs.map(d => ({ __id: d.id, ...d.data() }));
+                status.className = 'alert alert-success';
+                status.innerHTML = `✅ ${registros.length} registros carregados. Usuário: ${esc(user.email || user.uid)}`;
+                document.getElementById('conteudo').style.display = 'block';
+                montarListas();
+            } catch (e) {
+                status.className = 'alert alert-danger';
+                status.innerHTML = '❌ Erro ao ler a coleção: ' + esc(e.message);
+            }
+        });
+
+        function freq(campo) {
+            const m = {};
+            let vazios = 0;
+            registros.forEach(r => {
+                const v = r[campo];
+                if (isBlank(v)) { vazios++; return; }
+                m[v] = (m[v]||0)+1;
+            });
+            const pares = Object.entries(m).sort((a,b) => a[1]-b[1] || a[0].localeCompare(b[0])); // raros primeiro
+            if (vazios > 0) pares.unshift([VAZIO, vazios]); // "campo em branco" sempre no topo
+            return pares;
+        }
+
+        function montarListas() {
+            renderLista('tblUni', freq('local_ocorrencia'), selUni, 'uni');
+            renderLista('tblNot', freq('nome_notificante'), selNot, 'not');
+            document.getElementById('filtroUni').addEventListener('input', e => filtrar('tblUni', e.target.value));
+            document.getElementById('filtroNot').addEventListener('input', e => filtrar('tblNot', e.target.value));
+        }
+
+        function renderLista(tbodyId, pares, selSet, pref) {
+            const tb = document.getElementById(tbodyId);
+            tb.innerHTML = pares.map(([v,c],i) => {
+                const ehVazio = v === VAZIO;
+                const rotulo = ehVazio ? '<span class="badge bg-warning text-dark">campo em branco</span>' : esc(v);
+                const filtroVal = ehVazio ? '(em branco)' : esc(v.toLowerCase());
+                return `
+                <tr data-val="${filtroVal}" class="${ehVazio ? 'table-warning' : ''}">
+                    <td style="width:34px"><input type="checkbox" class="form-check-input" id="${pref}_${i}"></td>
+                    <td><label for="${pref}_${i}" class="d-block">${rotulo}</label></td>
+                    <td class="text-muted text-end" style="width:48px">${c}×</td>
+                </tr>`;
+            }).join('');
+            pares.forEach(([v],i) => {
+                document.getElementById(`${pref}_${i}`).addEventListener('change', (e) => {
+                    if (e.target.checked) selSet.add(v); else selSet.delete(v);
+                    e.target.closest('tr').classList.toggle('val-sel', e.target.checked);
+                    atualizarPreview();
+                });
+            });
+        }
+
+        function filtrar(tbodyId, termo) {
+            const t = termo.trim().toLowerCase();
+            document.querySelectorAll(`#${tbodyId} tr`).forEach(tr => {
+                tr.style.display = tr.dataset.val.includes(t) ? '' : 'none';
+            });
+        }
+
+        function registrosSelecionados() {
+            return registros.filter(r => {
+                const uBlank = isBlank(r.local_ocorrencia);
+                const nBlank = isBlank(r.nome_notificante);
+                const uMatch = uBlank ? selUni.has(VAZIO) : selUni.has(r.local_ocorrencia);
+                const nMatch = nBlank ? selNot.has(VAZIO) : selNot.has(r.nome_notificante);
+                return uMatch || nMatch;
+            });
+        }
+
+        function atualizarPreview() {
+            const alvo = registrosSelecionados();
+            const resumo = document.getElementById('resumoSelecao');
+            const tbody = document.getElementById('tblPreview');
+            const habilitar = alvo.length > 0;
+            document.getElementById('btnBackup').disabled = !habilitar;
+            document.getElementById('confirmTxt').disabled = !habilitar;
+            validarConfirmacao();
+
+            if (!habilitar) {
+                resumo.textContent = 'Nenhum valor selecionado.';
+                tbody.innerHTML = '';
+                return;
+            }
+            resumo.innerHTML = `<strong>${alvo.length}</strong> registro(s) serão excluídos (valores marcados: ${selUni.size} em Unidade, ${selNot.size} em Notificante).`;
+            tbody.innerHTML = alvo.slice(0, 300).map(r => `
+                <tr>
+                    <td class="small">${esc(r.data_ocorrencia || '-')}</td>
+                    <td class="small">${isBlank(r.local_ocorrencia) ? '<em class="text-warning">(em branco)</em>' : esc(r.local_ocorrencia)}</td>
+                    <td class="small">${esc(r.tipo_evento || '-')}</td>
+                    <td class="small">${isBlank(r.nome_notificante) ? '<em class="text-warning">(em branco)</em>' : esc(r.nome_notificante)}</td>
+                    <td class="small text-muted">${esc((r.descricao_evento || '').slice(0,60))}</td>
+                </tr>`).join('') + (alvo.length > 300 ? `<tr><td colspan="5" class="text-muted small">… e mais ${alvo.length-300} (todos serão excluídos).</td></tr>` : '');
+        }
+
+        // Backup obrigatório antes da exclusão
+        document.getElementById('btnBackup').addEventListener('click', () => {
+            const alvo = registrosSelecionados();
+            if (alvo.length === 0) return;
+            const blob = new Blob([JSON.stringify(alvo, null, 2)], { type: 'application/json' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `backup_registros_excluidos_${new Date().toISOString().slice(0,10)}.json`;
+            link.click();
+            URL.revokeObjectURL(link.href);
+            document.getElementById('btnBackup').classList.replace('btn-outline-dark','btn-success');
+            document.getElementById('btnBackup').textContent = '✓ Backup baixado';
+        });
+
+        const confirmTxt = document.getElementById('confirmTxt');
+        confirmTxt.addEventListener('input', validarConfirmacao);
+        function validarConfirmacao() {
+            const ok = registrosSelecionados().length > 0 && confirmTxt.value.trim().toUpperCase() === 'EXCLUIR';
+            document.getElementById('btnExcluir').disabled = !ok;
+        }
+
+        document.getElementById('btnExcluir').addEventListener('click', async () => {
+            const alvo = registrosSelecionados();
+            if (alvo.length === 0) return;
+            if (!confirm(`Excluir DEFINITIVAMENTE ${alvo.length} registro(s)? Esta ação não pode ser desfeita.`)) return;
+
+            const btn = document.getElementById('btnExcluir');
+            btn.disabled = true; btn.textContent = 'Excluindo…';
+            const res = document.getElementById('resultado');
+
+            try {
+                let apagados = 0;
+                // Firestore: máximo de 500 operações por batch
+                for (let i = 0; i < alvo.length; i += 450) {
+                    const lote = alvo.slice(i, i + 450);
+                    const batch = writeBatch(db);
+                    lote.forEach(r => batch.delete(doc(db, COLECAO, r.__id)));
+                    await batch.commit();
+                    apagados += lote.length;
+                    res.className = 'alert alert-info';
+                    res.textContent = `Excluindo… ${apagados}/${alvo.length}`;
+                }
+                res.className = 'alert alert-success';
+                res.innerHTML = `✅ ${apagados} registro(s) excluído(s). Recarregue a página para ver a lista atualizada.`;
+                // Remove da memória local e limpa seleção
+                const ids = new Set(alvo.map(r => r.__id));
+                registros = registros.filter(r => !ids.has(r.__id));
+                selUni.clear(); selNot.clear();
+                montarListas(); atualizarPreview();
+                btn.textContent = '2) Excluir registros selecionados';
+            } catch (e) {
+                res.className = 'alert alert-danger';
+                res.innerHTML = '❌ Erro ao excluir: ' + esc(e.message) + ' (verifique as regras de escrita/exclusão do Firestore).';
+                btn.disabled = false; btn.textContent = '2) Excluir registros selecionados';
+            }
+        });
+    </script>
+</body>
+</html>
