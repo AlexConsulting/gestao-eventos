@@ -147,6 +147,7 @@
                         <option value="PENDENTE">PENDENTE</option>
                         <option value="EM ANÁLISE">EM ANÁLISE</option>
                         <option value="CONCLUÍDO">CONCLUÍDO</option>
+                        <option value="CANCELADO">CANCELADO</option>
                     </select>
                 </div>
                 <div class="col-md-4">
@@ -488,7 +489,7 @@
 
             let filtrados = todosDados.filter(d => {
                 const matchUnidade = unidade === 'TODAS' || d.local_ocorrencia === unidade;
-                const matchStatus = status === 'TODOS' || d.status_processamento === status;
+                const matchStatus = status === 'TODOS' || normStatus(d.status_processamento) === normStatus(status);
                 
                 let matchData = true;
                 if (mesRef) {
@@ -835,6 +836,12 @@
             return null;
         }
 
+        // Normaliza status para comparação insensível a maiúsculas/acentos
+        // ("Concluído", "CONCLUÍDO", "concluido" → "concluido")
+        function normStatus(s) {
+            return String(s == null ? '' : s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+        }
+
         // Coluna Data: usa a data do registro nos formatos reais; "---" se não houver data válida.
         function formatarDataLinha(d) {
             const dt = parseDataRegistro(d);
@@ -860,9 +867,10 @@
             
             dados.forEach(d => {
                 const dataFormatada = formatarDataLinha(d);
-                const statusColor = d.status_processamento === 'CONCLUÍDO' ? 'bg-success' : 
-                                   d.status_processamento === 'EM ANÁLISE' ? 'bg-warning text-dark' : 
-                                   d.status_processamento === 'CANCELADO' ? 'bg-secondary' : 'bg-info';
+                const _st = normStatus(d.status_processamento);
+                const statusColor = _st === 'concluido' ? 'bg-success' :
+                                   _st === 'em analise' ? 'bg-warning text-dark' :
+                                   _st === 'cancelado' ? 'bg-secondary' : 'bg-info';
                 
                 const telOriginal = d.telefone_notificado || "";
                 const telMascara = aplicarMascaraTelefone(telOriginal);
