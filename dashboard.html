@@ -390,6 +390,9 @@
         const auth = getAuth(app);
         const COLECAO = 'eventos_notificacoes';
 
+        // Marcador de versão — confira no Console (F12) para validar qual build está no ar
+        console.log('%c[Dashboard] build 2026-06-17 · Dia da Semana usa o campo dia_semana (com fallback por data)', 'color:#27ae60;font-weight:bold');
+
         // --- LÓGICA DE AUTENTICAÇÃO ---
         onAuthStateChanged(auth, (user) => {
             if (!user) {
@@ -488,8 +491,9 @@
                 const matchStatus = status === 'TODOS' || d.status_processamento === status;
                 
                 let matchData = true;
-                if(mesRef && d.data_ocorrencia) {
-                    matchData = d.data_ocorrencia.startsWith(mesRef);
+                if (mesRef) {
+                    const dt = parseDataRegistro(d);
+                    matchData = dt ? `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}` === mesRef : false;
                 }
 
                 return matchUnidade && matchStatus && matchData;
@@ -542,19 +546,23 @@
             const paleta = ['#2c3e50', '#27ae60', '#e67e22', '#e74c3c', '#3498db', '#9b59b6', '#16a085', '#f1c40f', '#34495e', '#7f8c8d'];
 
             // ---------- 1) TENDÊNCIA TEMPORAL (linha) ----------
-            const datasMap = dados.reduce((acc, d) => {
-                if (d.data_ocorrencia) acc[d.data_ocorrencia] = (acc[d.data_ocorrencia] || 0) + 1;
-                return acc;
-            }, {});
+            // Agrupa por dia usando chave ISO (aaaa-mm-dd) para ordenação cronológica correta.
+            const datasMap = {};
+            dados.forEach(d => {
+                const dt = parseDataRegistro(d);
+                if (!dt) return;
+                const chave = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+                datasMap[chave] = (datasMap[chave] || 0) + 1;
+            });
             const datasOrdenadas = Object.keys(datasMap).sort();
 
             chartLinha = new Chart(document.getElementById('chartLinha'), {
                 type: 'line',
                 data: {
-                    labels: datasOrdenadas.map(d => d.split('-').reverse().slice(0, 2).join('/')),
+                    labels: datasOrdenadas.map(k => { const p = k.split('-'); return `${p[2]}/${p[1]}`; }),
                     datasets: [{
                         label: 'Eventos',
-                        data: datasOrdenadas.map(d => datasMap[d]),
+                        data: datasOrdenadas.map(k => datasMap[k]),
                         borderColor: '#2c3e50',
                         tension: 0.3,
                         fill: true,
@@ -612,26 +620,23 @@
             });
 
             // ---------- 4) NOTIFICAÇÕES POR DIA DA SEMANA (barra) ----------
-            // Ordem fixa: Segunda -> Domingo (getDay: 0=Dom ... 6=Sáb)
-            const nomesDias = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-            const ordemExibicao = [1, 2, 3, 4, 5, 6, 0];
-            const contagemDias = [0, 0, 0, 0, 0, 0, 0];
+            // Usa o campo dia_semana já gravado no banco; se faltar, deriva da data do registro.
+            const nomesDiasJS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+            const ordemNomes = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
+            const contagemDias = { 'Segunda': 0, 'Terça': 0, 'Quarta': 0, 'Quinta': 0, 'Sexta': 0, 'Sábado': 0, 'Domingo': 0 };
             dados.forEach(d => {
-                if (!d.data_ocorrencia) return;
-                const partes = d.data_ocorrencia.split('-').map(Number);
-                if (partes.length !== 3) return;
-                // Construtor local evita o erro de fuso (UTC) que desloca o dia
-                const dt = new Date(partes[0], partes[1] - 1, partes[2]);
-                if (!isNaN(dt)) contagemDias[dt.getDay()]++;
+                let nome = normalizarDiaSemana(d.dia_semana);
+                if (!nome) { const dt = parseDataRegistro(d); if (dt) nome = nomesDiasJS[dt.getDay()]; }
+                if (nome && contagemDias[nome] !== undefined) contagemDias[nome]++;
             });
 
             chartDiaSemana = new Chart(document.getElementById('chartDiaSemana'), {
                 type: 'bar',
                 data: {
-                    labels: ordemExibicao.map(i => nomesDias[i]),
+                    labels: ordemNomes,
                     datasets: [{
                         label: 'Notificações',
-                        data: ordemExibicao.map(i => contagemDias[i]),
+                        data: ordemNomes.map(n => contagemDias[n]),
                         backgroundColor: '#3498db'
                     }]
                 },
@@ -763,7 +768,8 @@
                 'Material/Documento', 'Medição/Monitoramento', 'Causa Raiz Provável', 'Ação de Melhoria',
                 'Observações Admin', 'Data Tratativa'];
             const linhas = dadosFiltradosAtuais.map(d => {
-                const dataFmt = d.data_ocorrencia ? d.data_ocorrencia.split('-').reverse().join('/') : '';
+                const _dt = parseDataRegistro(d);
+                const dataFmt = _dt ? dataParaBR(_dt) : '';
                 return [
                     dataFmt,
                     d.local_ocorrencia || '',
@@ -796,13 +802,64 @@
         document.getElementById('btnExportarPDF').addEventListener('click', exportarPDF);
         document.getElementById('btnExportarCSV').addEventListener('click', exportarCSV);
 
+        // Converte a data de um registro em objeto Date, lidando com os formatos reais do banco:
+        // data_ocorrencia em dd/mm/aaaa (e, por garantia, aaaa-mm-dd) e carimbo_data_hora em M/d/aaaa (US).
+        function parseDataRegistro(d) {
+            const v = d && d.data_ocorrencia ? String(d.data_ocorrencia).trim() : '';
+            let m = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);   // dd/mm/aaaa
+            if (m) { const dt = new Date(+m[3], +m[2] - 1, +m[1]); if (!isNaN(dt)) return dt; }
+            m = v.match(/^(\d{4})-(\d{2})-(\d{2})/);             // aaaa-mm-dd
+            if (m) { const dt = new Date(+m[1], +m[2] - 1, +m[3]); if (!isNaN(dt)) return dt; }
+            if (d && d.carimbo_data_hora) {                      // fallback: carimbo (US M/d/aaaa h:mm:ss)
+                const dt = new Date(d.carimbo_data_hora);
+                if (!isNaN(dt)) return dt;
+            }
+            return null;
+        }
+
+        function dataParaBR(dt) {
+            return `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}/${dt.getFullYear()}`;
+        }
+
+        // Normaliza o nome do dia da semana (o campo dia_semana já existe no banco)
+        function normalizarDiaSemana(s) {
+            if (!s) return null;
+            const t = String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            if (t.startsWith('seg')) return 'Segunda';
+            if (t.startsWith('ter')) return 'Terça';
+            if (t.startsWith('qua')) return 'Quarta';
+            if (t.startsWith('qui')) return 'Quinta';
+            if (t.startsWith('sex')) return 'Sexta';
+            if (t.startsWith('sab')) return 'Sábado';
+            if (t.startsWith('dom')) return 'Domingo';
+            return null;
+        }
+
+        // Coluna Data: usa a data do registro nos formatos reais; "---" se não houver data válida.
+        function formatarDataLinha(d) {
+            const dt = parseDataRegistro(d);
+            return dt ? dataParaBR(dt) : '---';
+        }
+
+        // Escapa caracteres que poderiam quebrar a estrutura HTML da célula
+        // (um '<', '>' ou aspas em um registro deslocaria as colunas seguintes).
+        function escTexto(v) {
+            if (v == null) return '';
+            return String(v)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
         function renderizarTabela(dados) {
             const tbody = document.querySelector('#tabelaEventos tbody');
             document.getElementById('contadorTabela').innerText = `Exibindo ${dados.length} registros`;
             tbody.innerHTML = '';
             
             dados.forEach(d => {
-                const dataFormatada = d.data_ocorrencia ? d.data_ocorrencia.split('-').reverse().join('/') : '---';
+                const dataFormatada = formatarDataLinha(d);
                 const statusColor = d.status_processamento === 'CONCLUÍDO' ? 'bg-success' : 
                                    d.status_processamento === 'EM ANÁLISE' ? 'bg-warning text-dark' : 
                                    d.status_processamento === 'CANCELADO' ? 'bg-secondary' : 'bg-info';
@@ -812,12 +869,12 @@
 
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
-                    <td class="small fw-bold">${dataFormatada}</td>
-                    <td class="small">${d.local_ocorrencia || '-'}</td>
-                    <td class="small">${d.tipo_evento || '-'}</td>
-                    <td class="small">${d.nome_notificante || '-'}</td>
-                    <td class="small">${telMascara}</td>
-                    <td><span class="status-badge ${statusColor} text-white">${d.status_processamento || 'PENDENTE'}</span></td>
+                    <td class="small fw-bold text-nowrap">${escTexto(dataFormatada)}</td>
+                    <td class="small">${escTexto(d.local_ocorrencia) || '-'}</td>
+                    <td class="small">${escTexto(d.tipo_evento) || '-'}</td>
+                    <td class="small">${escTexto(d.nome_notificante) || '-'}</td>
+                    <td class="small text-nowrap">${escTexto(telMascara)}</td>
+                    <td><span class="status-badge ${statusColor} text-white">${escTexto(d.status_processamento) || 'PENDENTE'}</span></td>
                     <td>
                         <button class="btn btn-sm btn-outline-primary" onclick="abrirModalTratativa('${d.id}')">
                             Tratar
@@ -832,13 +889,15 @@
             const d = todosDados.find(x => x.id === id) || {};
 
             // Contexto do evento registrado (somente leitura)
-            const dataFmt = d.data_ocorrencia ? d.data_ocorrencia.split('-').reverse().join('/') : '---';
+            const dataFmt = formatarDataLinha(d);
             const esc = (v) => (v == null ? '' : String(v).replace(/</g, '&lt;').replace(/>/g, '&gt;'));
             document.getElementById('ctxEvento').innerHTML = `
-                <div><strong>Data:</strong> ${esc(dataFmt)} &nbsp;|&nbsp; <strong>Unidade:</strong> ${esc(d.local_ocorrencia || '-')}</div>
+                <div><strong>Data:</strong> ${esc(dataFmt)} &nbsp;|&nbsp; <strong>Dia:</strong> ${esc(d.dia_semana || '-')} &nbsp;|&nbsp; <strong>Unidade:</strong> ${esc(d.local_ocorrencia || '-')}</div>
                 <div><strong>Tipo de Evento:</strong> ${esc(d.tipo_evento || '-')}</div>
                 <div><strong>Notificante:</strong> ${esc(d.nome_notificante || '-')} &nbsp;|&nbsp; <strong>Status atual:</strong> ${esc(d.status_processamento || 'PENDENTE')}</div>
-                ${d.descricao_ocorrencia ? `<div class="mt-1"><strong>Descrição:</strong> ${esc(d.descricao_ocorrencia)}</div>` : ''}
+                ${d.descricao_evento ? `<div class="mt-1"><strong>Descrição:</strong> ${esc(d.descricao_evento)}</div>` : ''}
+                ${d.implicacoes ? `<div class="mt-1"><strong>Implicações:</strong> ${esc(d.implicacoes)}</div>` : ''}
+                ${d.acoes_imediatas ? `<div class="mt-1"><strong>Ações imediatas:</strong> ${esc(d.acoes_imediatas)}</div>` : ''}
             `;
 
             document.getElementById('editDocId').value = id;
