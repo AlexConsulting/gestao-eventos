@@ -249,8 +249,8 @@
                 <div class="col-lg-5">
                     <div class="chart-container tall">
                         <div class="chart-head">
-                            <h6 class="fw-bold">Notificações por Notificador</h6>
-                            <button class="btn-export-png" onclick="exportarGrafico('chartNotificador','notificacoes_por_notificador')">PNG</button>
+                            <h6 class="fw-bold">Notificações por Notificado</h6>
+                            <button class="btn-export-png" onclick="exportarGrafico('chartNotificador','notificacoes_por_notificado')">PNG</button>
                         </div>
                         <div class="chart-wrapper">
                             <canvas id="chartNotificador"></canvas>
@@ -298,6 +298,12 @@
                     <div class="border rounded p-3 mb-3 bg-light">
                         <div class="small text-muted fw-bold text-uppercase mb-2">Evento Registrado</div>
                         <div id="ctxEvento" class="small"></div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Notificado</label>
+                        <input type="text" id="editNotificadoNome" class="form-control" readonly>
+                        <div class="form-text">Pessoa/setor notificado neste evento.</div>
                     </div>
 
                     <div class="mb-3">
@@ -672,19 +678,19 @@
                 }
             });
 
-            // ---------- 6) NOTIFICAÇÕES POR NOTIFICADOR (barra horizontal) ----------
-            const notificadorMap = dados.reduce((acc, d) => {
-                const n = d.nome_notificante || 'Não informado';
+            // ---------- 6) NOTIFICAÇÕES POR NOTIFICADO (barra horizontal) ----------
+            const notificadoMap = dados.reduce((acc, d) => {
+                const n = d.nome_notificado_setor || 'Não informado';
                 acc[n] = (acc[n] || 0) + 1;
                 return acc;
             }, {});
-            const notificadoresOrdenados = Object.entries(notificadorMap).sort((a, b) => b[1] - a[1]);
+            const notificadosOrdenados = Object.entries(notificadoMap).sort((a, b) => b[1] - a[1]);
 
             chartNotificador = new Chart(document.getElementById('chartNotificador'), {
                 type: 'bar',
                 data: {
-                    labels: notificadoresOrdenados.map(e => e[0]),
-                    datasets: [{ label: 'Notificações', data: notificadoresOrdenados.map(e => e[1]), backgroundColor: '#e67e22' }]
+                    labels: notificadosOrdenados.map(e => e[0]),
+                    datasets: [{ label: 'Notificações', data: notificadosOrdenados.map(e => e[1]), backgroundColor: '#e67e22' }]
                 },
                 options: {
                     ...commonOptions,
@@ -723,7 +729,7 @@
                 { chart: chartUnidades,      titulo: 'Notificações por Unidade' },
                 { chart: chartDiaSemana,     titulo: 'Notificações por Dia da Semana' },
                 { chart: chartTipoUnidade,   titulo: 'Notificações por Tipo de Evento e Unidade' },
-                { chart: chartNotificador,   titulo: 'Notificações por Notificador' }
+                { chart: chartNotificador,   titulo: 'Notificações por Notificado' }
             ].filter(item => item.chart);
 
             if (lista.length === 0) { alert('Nenhum gráfico disponível para exportar.'); return; }
@@ -842,6 +848,34 @@
             return String(s == null ? '' : s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
         }
 
+        // Mapeia o status gravado (em qualquer caixa/acentuação) para a opção exata do select.
+        function statusParaOpcao(s) {
+            const n = normStatus(s);
+            if (n === 'concluido') return 'CONCLUÍDO';
+            if (n === 'em analise') return 'EM ANÁLISE';
+            if (n === 'cancelado') return 'CANCELADO';
+            return 'PENDENTE';
+        }
+
+        // Timestamp do cadastro (em ms) para ordenar a tabela — mais recentes primeiro.
+        // Lida com carimbo_data_hora em formato americano ("M/d/aaaa h:mm:ss") ou ISO,
+        // com carimbo_tempo ({seconds}) e, na falta, com a data da ocorrência.
+        function tsRegistro(d) {
+            const c = d.carimbo_data_hora;
+            if (c != null) {
+                if (typeof c === 'object') {
+                    if (typeof c.seconds === 'number') return c.seconds * 1000;
+                    if (typeof c.toDate === 'function') { const dt = c.toDate(); if (!isNaN(dt)) return dt.getTime(); }
+                } else {
+                    const dt = new Date(c);
+                    if (!isNaN(dt)) return dt.getTime();
+                }
+            }
+            if (d.carimbo_tempo && typeof d.carimbo_tempo.seconds === 'number') return d.carimbo_tempo.seconds * 1000;
+            const dd = parseDataRegistro(d);
+            return dd ? dd.getTime() : 0;
+        }
+
         // Coluna Data: usa a data do registro nos formatos reais; "---" se não houver data válida.
         function formatarDataLinha(d) {
             const dt = parseDataRegistro(d);
@@ -864,8 +898,11 @@
             const tbody = document.querySelector('#tabelaEventos tbody');
             document.getElementById('contadorTabela').innerText = `Exibindo ${dados.length} registros`;
             tbody.innerHTML = '';
-            
-            dados.forEach(d => {
+
+            // Ordena por data/hora de cadastro — mais recentes primeiro (facilita as tratativas)
+            const ordenados = [...dados].sort((a, b) => tsRegistro(b) - tsRegistro(a));
+
+            ordenados.forEach(d => {
                 const dataFormatada = formatarDataLinha(d);
                 const _st = normStatus(d.status_processamento);
                 const statusColor = _st === 'concluido' ? 'bg-success' :
@@ -909,8 +946,10 @@
             `;
 
             document.getElementById('editDocId').value = id;
-            document.getElementById('editStatus').value = d.status_processamento || 'PENDENTE';
+            // Normaliza o status para a opção correta do select (evita ficar em branco e virar PENDENTE ao salvar)
+            document.getElementById('editStatus').value = statusParaOpcao(d.status_processamento);
             document.getElementById('editComentario').value = d.comentarios_admin || '';
+            document.getElementById('editNotificadoNome').value = d.nome_notificado_setor || '';
 
             // Campos de análise de causa raiz
             document.getElementById('editProblema').value = d.problema_principal || d.tipo_evento || '';
