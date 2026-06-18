@@ -165,18 +165,18 @@
                 </div>
                 <div class="col-md-3">
                     <div class="kpi-card" style="border-top-color: #e67e22">
-                        <div class="kpi-label">Atrasos/Faltas</div>
+                        <div class="kpi-label">Pendentes</div>
                         <div class="kpi-value" id="kpiAdm">0</div>
                     </div>
                 </div>
                 <div class="col-md-3">
-                    <div class="kpi-card" style="border-top-color: #e74c3c">
-                        <div class="kpi-label">Assistenciais</div>
+                    <div class="kpi-card" style="border-top-color: #3498db">
+                        <div class="kpi-label">Em Análise</div>
                         <div class="kpi-value" id="kpiAssist">0</div>
                     </div>
                 </div>
                 <div class="col-md-3">
-                    <div class="kpi-card" style="border-top-color: #3498db">
+                    <div class="kpi-card" style="border-top-color: #27ae60">
                         <div class="kpi-label">Resolvidos (%)</div>
                         <div class="kpi-value" id="kpiEficiencia">0%</div>
                     </div>
@@ -519,16 +519,23 @@
         function atualizarKPIs(dados) {
             const total = dados.length;
             document.getElementById('kpiTotal').innerText = total;
-            
-            document.getElementById('kpiAdm').innerText = dados.filter(d => 
-                (d.tipo_evento && d.tipo_evento.includes('ADMINISTRATIVO'))
-            ).length;
 
-            document.getElementById('kpiAssist').innerText = dados.filter(d => 
-                d.tipo_evento === 'ASSISTENCIAL'
-            ).length;
+            // Pendentes: status PENDENTE (e registros sem status, que aparecem como pendentes na tabela)
+            const pendentes = dados.filter(d => {
+                const s = normStatus(d.status_processamento);
+                return s === 'pendente' || s === '';
+            }).length;
+            document.getElementById('kpiAdm').innerText = pendentes;
 
-            const concluidos = dados.filter(d => d.status_processamento === 'CONCLUÍDO').length;
+            // Em Andamento: status EM ANÁLISE / Em Andamento
+            const emAndamento = dados.filter(d => {
+                const s = normStatus(d.status_processamento);
+                return s === 'em analise' || s === 'em andamento';
+            }).length;
+            document.getElementById('kpiAssist').innerText = emAndamento;
+
+            // Resolvidos (%): todos os concluídos sobre o total filtrado
+            const concluidos = dados.filter(d => normStatus(d.status_processamento) === 'concluido').length;
             const eficiencia = total > 0 ? Math.round((concluidos / total) * 100) : 0;
             document.getElementById('kpiEficiencia').innerText = eficiencia + '%';
         }
