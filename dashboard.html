@@ -593,19 +593,30 @@
             });
 
             // ---------- 2) STATUS DE PROCESSAMENTO (pizza) ----------
-            const statusMap = dados.reduce((acc, d) => {
-                const s = d.status_processamento || 'PENDENTE';
-                acc[s] = (acc[s] || 0) + 1;
-                return acc;
-            }, {});
+            // Agrupa por status canônico: mescla variações de caixa/acento ("Concluído"+"CONCLUÍDO")
+            // e reúne em "Outros" os textos que não são status de verdade.
+            const coresStatus = {
+                'PENDENTE': '#f1c40f',
+                'EM ANÁLISE': '#3498db',
+                'CONCLUÍDO': '#2ecc71',
+                'CANCELADO': '#95a5a6',
+                'Outros': '#bdc3c7'
+            };
+            const ordemStatus = ['PENDENTE', 'EM ANÁLISE', 'CONCLUÍDO', 'CANCELADO', 'Outros'];
+            const statusContagem = {};
+            dados.forEach(d => {
+                const c = statusCanonico(d.status_processamento);
+                statusContagem[c] = (statusContagem[c] || 0) + 1;
+            });
+            const statusLabels = ordemStatus.filter(s => statusContagem[s] > 0);
 
             chartPizzaStatus = new Chart(document.getElementById('chartPizzaStatus'), {
                 type: 'pie',
                 data: {
-                    labels: Object.keys(statusMap),
+                    labels: statusLabels,
                     datasets: [{
-                        data: Object.values(statusMap),
-                        backgroundColor: ['#f1c40f', '#3498db', '#2ecc71', '#95a5a6', '#e74c3c']
+                        data: statusLabels.map(s => statusContagem[s]),
+                        backgroundColor: statusLabels.map(s => coresStatus[s])
                     }]
                 },
                 options: { ...commonOptions, plugins: { legend: { position: 'bottom' } } }
@@ -888,6 +899,17 @@
             if (n === 'em analise') return 'EM ANÁLISE';
             if (n === 'cancelado') return 'CANCELADO';
             return 'PENDENTE';
+        }
+
+        // Classifica em status canônico para o gráfico de pizza.
+        // Mescla variações de caixa/acento e joga textos que não são status em "Outros".
+        function statusCanonico(s) {
+            const n = normStatus(s);
+            if (n === 'pendente' || n === '') return 'PENDENTE';
+            if (n === 'em analise' || n === 'em andamento') return 'EM ANÁLISE';
+            if (n === 'concluido') return 'CONCLUÍDO';
+            if (n === 'cancelado') return 'CANCELADO';
+            return 'Outros';
         }
 
         // Timestamp do cadastro (em ms) para ordenar a tabela — mais recentes primeiro.
