@@ -235,7 +235,7 @@
                     </div>
                 </div>
 
-                <div class="col-lg-7">
+                <div class="col-lg-6">
                     <div class="chart-container tall">
                         <div class="chart-head">
                             <h6 class="fw-bold">Notificações por Tipo de Evento e Unidade</h6>
@@ -246,7 +246,7 @@
                         </div>
                     </div>
                 </div>
-                <div class="col-lg-5">
+                <div class="col-lg-6">
                     <div class="chart-container tall">
                         <div class="chart-head">
                             <h6 class="fw-bold">Notificações por Notificado</h6>
@@ -679,24 +679,50 @@
             });
 
             // ---------- 6) NOTIFICAÇÕES POR NOTIFICADO (barra horizontal) ----------
+            // O campo tem alta cardinalidade (nomes livres); mostramos só os principais + "Outros".
             const notificadoMap = dados.reduce((acc, d) => {
                 const n = d.nome_notificado_setor || 'Não informado';
                 acc[n] = (acc[n] || 0) + 1;
                 return acc;
             }, {});
-            const notificadosOrdenados = Object.entries(notificadoMap).sort((a, b) => b[1] - a[1]);
+            const todosNotificados = Object.entries(notificadoMap).sort((a, b) => b[1] - a[1]);
+            const TOP_N = 15;
+            const topNotificados = todosNotificados.slice(0, TOP_N);
+            const restoNotificados = todosNotificados.slice(TOP_N);
+            const labelsNotif = topNotificados.map(e => e[0]);
+            const dataNotif = topNotificados.map(e => e[1]);
+            if (restoNotificados.length > 0) {
+                const somaResto = restoNotificados.reduce((s, e) => s + e[1], 0);
+                labelsNotif.push(`Outros (${restoNotificados.length})`);
+                dataNotif.push(somaResto);
+            }
 
             chartNotificador = new Chart(document.getElementById('chartNotificador'), {
                 type: 'bar',
                 data: {
-                    labels: notificadosOrdenados.map(e => e[0]),
-                    datasets: [{ label: 'Notificações', data: notificadosOrdenados.map(e => e[1]), backgroundColor: '#e67e22' }]
+                    labels: labelsNotif,
+                    datasets: [{ label: 'Notificações', data: dataNotif, backgroundColor: '#e67e22' }]
                 },
                 options: {
                     ...commonOptions,
                     indexAxis: 'y',
-                    plugins: { legend: { display: false } },
-                    scales: { x: { beginAtZero: true, ticks: { precision: 0 } } }
+                    plugins: {
+                        legend: { display: false },
+                        title: { display: true, text: `Top ${TOP_N} (de ${todosNotificados.length} notificados)`, font: { size: 11 }, color: '#7f8c8d' }
+                    },
+                    scales: {
+                        x: { beginAtZero: true, ticks: { precision: 0 } },
+                        y: {
+                            ticks: {
+                                font: { size: 11 },
+                                autoSkip: false,
+                                callback: function (value) {
+                                    const l = this.getLabelForValue(value);
+                                    return l.length > 30 ? l.slice(0, 29) + '…' : l;
+                                }
+                            }
+                        }
+                    }
                 }
             });
         }
@@ -899,8 +925,15 @@
             document.getElementById('contadorTabela').innerText = `Exibindo ${dados.length} registros`;
             tbody.innerHTML = '';
 
-            // Ordena por data/hora de cadastro — mais recentes primeiro (facilita as tratativas)
-            const ordenados = [...dados].sort((a, b) => tsRegistro(b) - tsRegistro(a));
+            // Ordena pela DATA da ocorrência (coluna Data) — decrescente, para TODOS os status.
+            // Empate de data: cadastro mais recente primeiro. Sem data válida vai para o fim.
+            const ordenados = [...dados].sort((a, b) => {
+                const da = parseDataRegistro(a), db_ = parseDataRegistro(b);
+                const ta = da ? da.getTime() : -Infinity;
+                const tb = db_ ? db_.getTime() : -Infinity;
+                if (tb !== ta) return tb - ta;
+                return tsRegistro(b) - tsRegistro(a);
+            });
 
             ordenados.forEach(d => {
                 const dataFormatada = formatarDataLinha(d);
