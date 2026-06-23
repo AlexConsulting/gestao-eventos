@@ -1,0 +1,1218 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard de Gestão de Eventos e Ocorrências</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+    
+    <style>
+        :root {
+            --bg-light: #f1f4f8;
+            --header-dark: #2c3e50;
+            --accent-green: #27ae60;
+            --accent-red: #e74c3c;
+            --white: #ffffff;
+        }
+        body { background-color: var(--bg-light); font-family: 'Inter', sans-serif; }
+        .dashboard-header { background: var(--header-dark); color: white; padding: 25px 0; border-bottom: 5px solid var(--accent-green); }
+        
+        .filter-bar {
+            background: var(--white);
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: -30px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            z-index: 1000;
+            position: relative;
+        }
+
+        .kpi-card {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            text-align: center;
+            border-top: 4px solid var(--accent-green);
+            transition: transform 0.2s;
+        }
+        .kpi-card:hover { transform: translateY(-5px); }
+        .kpi-value { font-size: 2.2rem; font-weight: 800; color: var(--header-dark); }
+        .kpi-label { color: #7f8c8d; font-size: 0.85rem; font-weight: 600; text-transform: uppercase; }
+
+        .chart-container {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            margin-bottom: 25px;
+            height: 470px !important; 
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Variante para gráficos com muitas categorias / legendas longas */
+        .chart-container.tall { height: 560px !important; }
+
+        @media (max-width: 991px) {
+            .chart-container { height: 420px !important; }
+            .chart-container.tall { height: 480px !important; }
+        }
+
+        .chart-wrapper {
+            flex: 1;
+            min-height: 0;
+            position: relative;
+            width: 100%;
+        }
+
+        .chart-wrapper canvas {
+            position: absolute !important;
+            top: 0;
+            left: 0;
+            width: 100% !important;
+            height: 100% !important;
+            display: block;
+        }
+
+        .table-container { background: white; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); margin-top: 20px; }
+        .status-badge { font-size: 0.75rem; padding: 5px 10px; border-radius: 20px; font-weight: bold; }
+
+        /* Cabeçalho do gráfico com botão de exportação */
+        .chart-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .chart-head h6 { margin: 0; }
+        .btn-export-png {
+            border: 1px solid #d0d7de;
+            background: #f6f8fa;
+            color: #2c3e50;
+            font-size: 0.72rem;
+            font-weight: 600;
+            padding: 3px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.15s;
+            white-space: nowrap;
+        }
+        .btn-export-png:hover { background: var(--accent-green); color: #fff; border-color: var(--accent-green); }
+
+        .export-toolbar {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+            margin-bottom: 15px;
+        }
+
+        /* Proteção visual inicial para evitar flash de dados sem login */
+        #main-content { display: none; }
+    </style>
+</head>
+<body>
+
+    <div id="main-content">
+        <header class="dashboard-header">
+            <div class="container d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h1 class="h3 mb-0">Monitoramento de Eventos e Ocorrências</h1>
+                    <p class="mb-0 opacity-75">Visão Executiva de Incidentes e Fluxos Administrativos</p>
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-outline-danger btn-sm text-white" id="btnSairDashboard">SAIR</button>
+                    <a href="index.html" class="btn btn-outline-light btn-sm">VOLTAR</a>
+                    <button class="btn btn-light btn-sm" onclick="window.location.reload()">Atualizar Dados</button>
+                </div>
+            </div>
+        </header>
+
+        <main class="container">
+            <div class="filter-bar mb-4 row g-3">
+                <div class="col-md-4">
+                    <label class="form-label small fw-bold">Filtrar por Unidade</label>
+                    <select id="filtroUnidade" class="form-select form-select-sm">
+                        <option value="TODAS">Todas as Unidades</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small fw-bold">Status da Tratativa</label>
+                    <select id="filtroStatus" class="form-select form-select-sm">
+                        <option value="TODOS">Todos os Status</option>
+                        <option value="PENDENTE">PENDENTE</option>
+                        <option value="EM ANÁLISE">EM ANÁLISE</option>
+                        <option value="CONCLUÍDO">CONCLUÍDO</option>
+                        <option value="CANCELADO">CANCELADO</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small fw-bold">Período</label>
+                    <input type="month" id="filtroMes" class="form-control form-select-sm">
+                </div>
+            </div>
+
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <div class="kpi-card">
+                        <div class="kpi-label">Total Filtrado</div>
+                        <div class="kpi-value" id="kpiTotal">0</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="kpi-card" style="border-top-color: #e67e22">
+                        <div class="kpi-label">Pendentes</div>
+                        <div class="kpi-value" id="kpiAdm">0</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="kpi-card" style="border-top-color: #3498db">
+                        <div class="kpi-label">Em Análise</div>
+                        <div class="kpi-value" id="kpiAssist">0</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="kpi-card" style="border-top-color: #27ae60">
+                        <div class="kpi-label">Resolvidos (%)</div>
+                        <div class="kpi-value" id="kpiEficiencia">0%</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="export-toolbar">
+                <button class="btn btn-success btn-sm fw-bold" id="btnExportarPDF">⬇ Exportar Gráficos (PDF)</button>
+                <button class="btn btn-outline-dark btn-sm fw-bold" id="btnExportarCSV">⬇ Exportar Tabela (CSV)</button>
+            </div>
+
+            <div class="row">
+                <div class="col-lg-6">
+                    <div class="chart-container">
+                        <div class="chart-head">
+                            <h6 class="fw-bold">Tendência Temporal (Ocorrências/Dia)</h6>
+                            <button class="btn-export-png" onclick="exportarGrafico('chartLinha','notificacoes_por_dia')">PNG</button>
+                        </div>
+                        <div class="chart-wrapper">
+                            <canvas id="chartLinha"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-6">
+                    <div class="chart-container">
+                        <div class="chart-head">
+                            <h6 class="fw-bold">Status de Processamento</h6>
+                            <button class="btn-export-png" onclick="exportarGrafico('chartPizzaStatus','status_processamento')">PNG</button>
+                        </div>
+                        <div class="chart-wrapper">
+                            <canvas id="chartPizzaStatus"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-lg-6">
+                    <div class="chart-container tall">
+                        <div class="chart-head">
+                            <h6 class="fw-bold">Notificações por Unidade</h6>
+                            <button class="btn-export-png" onclick="exportarGrafico('chartUnidades','notificacoes_por_unidade')">PNG</button>
+                        </div>
+                        <div class="chart-wrapper">
+                            <canvas id="chartUnidades"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-6">
+                    <div class="chart-container tall">
+                        <div class="chart-head">
+                            <h6 class="fw-bold">Notificações por Dia da Semana</h6>
+                            <button class="btn-export-png" onclick="exportarGrafico('chartDiaSemana','notificacoes_por_dia_semana')">PNG</button>
+                        </div>
+                        <div class="chart-wrapper">
+                            <canvas id="chartDiaSemana"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-lg-6">
+                    <div class="chart-container tall">
+                        <div class="chart-head">
+                            <h6 class="fw-bold">Notificações por Tipo de Evento e Unidade</h6>
+                            <button class="btn-export-png" onclick="exportarGrafico('chartTipoUnidade','notificacoes_tipo_por_unidade')">PNG</button>
+                        </div>
+                        <div class="chart-wrapper">
+                            <canvas id="chartTipoUnidade"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-6">
+                    <div class="chart-container tall">
+                        <div class="chart-head">
+                            <h6 class="fw-bold">Notificações por Notificado</h6>
+                            <button class="btn-export-png" onclick="exportarGrafico('chartNotificador','notificacoes_por_notificado')">PNG</button>
+                        </div>
+                        <div class="chart-wrapper">
+                            <canvas id="chartNotificador"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-12">
+                    <div class="chart-container">
+                        <div class="chart-head">
+                            <h6 class="fw-bold">Notificações por Tipo de Dano</h6>
+                            <button class="btn-export-png" onclick="exportarGrafico('chartTipoDano','notificacoes_por_tipo_dano')">PNG</button>
+                        </div>
+                        <div class="chart-wrapper">
+                            <canvas id="chartTipoDano"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="table-container mb-5">
+                <div class="p-3 border-bottom d-flex justify-content-between align-items-center text-white bg-dark rounded-top">
+                    <h5 class="mb-0 fw-bold">Log de Eventos Detalhado</h5>
+                    <span id="contadorTabela" class="small"></span>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0" id="tabelaEventos">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Data</th>
+                                <th>Unidade</th>
+                                <th>Tipo</th>
+                                <th>Notificante</th>
+                                <th>Notificado</th>
+                                <th>Telefone (Notificado)</th>
+                                <th>Status</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div class="modal fade" id="modalTratativa" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">Tratativa de Evento &mdash; Análise de Causa Raiz</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="editDocId">
+
+                    <!-- Contexto do evento registrado -->
+                    <div class="border rounded p-3 mb-3 bg-light">
+                        <div class="small text-muted fw-bold text-uppercase mb-2">Evento Registrado</div>
+                        <div id="ctxEvento" class="small"></div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Notificado</label>
+                        <input type="text" id="editNotificadoNome" class="form-control" readonly>
+                        <div class="form-text">Pessoa/setor notificado neste evento.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Telefone do Notificado</label>
+                        <input type="text" id="editTelefone" class="form-control" placeholder="(00) 00000-0000" maxlength="15">
+                        <div class="form-text">Informe o contato para retorno da tratativa.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Problema principal</label>
+                        <textarea id="editProblema" class="form-control" rows="2" placeholder="Falha identificada ou evento ocorrido."></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Tipos de Dano</label>
+                        <select id="editTipoDano" class="form-select">
+                            <option value="">Selecione...</option>
+                            <option value="Circunstância de risco">Circunstância de risco</option>
+                            <option value="Evento sem dano — não atingiu o paciente">Evento sem dano — não atingiu o paciente</option>
+                            <option value="Evento sem dano — atingiu o paciente">Evento sem dano — atingiu o paciente</option>
+                            <option value="Evento com dano leve">Evento com dano leve</option>
+                            <option value="Evento com dano moderado">Evento com dano moderado</option>
+                            <option value="Evento com dano grave">Evento com dano grave</option>
+                        </select>
+                        <div class="form-text" id="editTipoDanoDesc"></div>
+                    </div>
+
+                    <hr>
+                    <h6 class="fw-bold text-primary mb-1">Análise de Causa Raiz (Ishikawa / 6M)</h6>
+                    <p class="small text-muted mb-3">Descreva, em cada dimensão, os fatores que contribuíram para a ocorrência.</p>
+
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold small">Método / Processo</label>
+                            <textarea id="editMetodo" class="form-control" rows="3" placeholder="Falhas no fluxo, rotina, padronização ou execução do processo."></textarea>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold small">Mão de obra / Pessoas</label>
+                            <textarea id="editMaoObra" class="form-control" rows="3" placeholder="Falhas na equipe, comunicação, orientação, treinamento ou responsabilidade."></textarea>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold small">Máquina / Sistema</label>
+                            <textarea id="editMaquina" class="form-control" rows="3" placeholder="Falhas no sistema, equipamento, painel, acesso ou funcionalidade."></textarea>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold small">Material / Documento</label>
+                            <textarea id="editMaterial" class="form-control" rows="3" placeholder="Ausência/falha de formulário, documento, protocolo, checklist ou orientação institucional."></textarea>
+                        </div>
+                        <div class="col-md-12">
+                            <label class="form-label fw-bold small">Medição / Monitoramento</label>
+                            <textarea id="editMedicao" class="form-control" rows="3" placeholder="Falhas no acompanhamento de indicadores, auditoria, análise de pendências e devolutiva à equipe."></textarea>
+                        </div>
+                    </div>
+
+                    <hr>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Causa raiz provável</label>
+                        <textarea id="editCausaRaiz" class="form-control" rows="2" placeholder="Causa principal que contribuiu para a ocorrência do evento."></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Ação de melhoria</label>
+                        <textarea id="editAcaoMelhoria" class="form-control" rows="3" placeholder="Ações para evitar recorrência: checklist, responsáveis, treinamento, monitoramento de indicadores."></textarea>
+                    </div>
+
+                    <hr>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Alterar Status</label>
+                        <select id="editStatus" class="form-select">
+                            <option value="PENDENTE">PENDENTE</option>
+                            <option value="EM ANÁLISE">EM ANÁLISE</option>
+                            <option value="CONCLUÍDO">CONCLUÍDO</option>
+                            <option value="CANCELADO">CANCELADO</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Observações gerais / Conduta do Admin</label>
+                        <textarea id="editComentario" class="form-control" rows="3"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer flex-wrap">
+                    <span id="msgTratativa" class="me-auto small text-success fw-bold"></span>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                    <button type="button" class="btn btn-outline-dark d-none" id="btnImprimirTratativa">Imprimir / PDF</button>
+                    <button type="button" class="btn btn-success" id="btnSalvarTratativa">Salvar Alterações</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, collection, onSnapshot, query, orderBy, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyBwqk2Yf2xCA1IrNRv5AgYCPU-6CSt1FTs",
+            authDomain: "gestaoeventos-a5ddf.firebaseapp.com",
+            projectId: "gestaoeventos-a5ddf",
+            storageBucket: "gestaoeventos-a5ddf.firebasestorage.app",
+            messagingSenderId: "963856052375",
+            appId: "1:963856052375:web:bed2c8c06e4b7b71a2f9d2"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        const COLECAO = 'eventos_notificacoes';
+
+        // Marcador de versão — confira no Console (F12) para validar qual build está no ar
+        console.log('%c[Dashboard] build 2026-06-17 · Dia da Semana usa o campo dia_semana (com fallback por data)', 'color:#27ae60;font-weight:bold');
+
+        // --- LÓGICA DE AUTENTICAÇÃO ---
+        onAuthStateChanged(auth, (user) => {
+            if (!user) {
+                // Se não estiver logado, redireciona
+                window.location.href = "login.html";
+            } else {
+                // Se estiver logado, mostra o conteúdo e inicia os dados
+                document.getElementById('main-content').style.display = 'block';
+                iniciarEscutaDados();
+            }
+        });
+
+        document.getElementById('btnSairDashboard').addEventListener('click', () => {
+            signOut(auth).then(() => { window.location.href = "login.html"; });
+        });
+
+        let chartUnidades, chartDiaSemana, chartLinha, chartPizzaStatus, chartTipoUnidade, chartNotificador, chartTipoDano;
+        let todosDados = [];
+        let dadosFiltradosAtuais = [];
+
+        // === CORREÇÃO DA EXPORTAÇÃO ===
+        // Por padrão o Chart.js v4 gera canvas com fundo TRANSPARENTE.
+        // Ao exportar (PNG/PDF) o fundo fica preto/quebrado. Este plugin
+        // desenha um fundo branco ATRÁS do gráfico, garantindo exportação correta.
+        const pluginFundoBranco = {
+            id: 'fundoBranco',
+            beforeDraw: (chart) => {
+                const ctx = chart.canvas.getContext('2d');
+                ctx.save();
+                ctx.globalCompositeOperation = 'destination-over';
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, chart.width, chart.height);
+                ctx.restore();
+            }
+        };
+        Chart.register(pluginFundoBranco);
+
+        // Registro central dos gráficos (usado pela exportação)
+        function getRegistroGraficos() {
+            return {
+                chartLinha, chartPizzaStatus, chartUnidades,
+                chartDiaSemana, chartTipoUnidade, chartNotificador, chartTipoDano
+            };
+        }
+
+        function iniciarEscutaDados() {
+            const q = query(collection(db, COLECAO), orderBy("carimbo_data_hora", "desc"));
+            onSnapshot(q, (snapshot) => {
+                todosDados = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+                console.log("Registros carregados:", todosDados.length);
+                popularFiltroUnidades(todosDados);
+                aplicarFiltros();
+            });
+        }
+
+        function aplicarMascaraTelefone(valor) {
+            if (!valor) return "N/I";
+            let v = valor.replace(/\D/g, "");
+            if (v.length > 11) v = v.substring(0, 11);
+
+            if (v.length === 11) return v.replace(/^(\d{2})(\d{5})(\d{4})$/, "($1) $2-$3");
+            if (v.length === 10) return v.replace(/^(\d{2})(\d{4})(\d{4})$/, "($1) $2-$3");
+            return v;
+        }
+
+        document.getElementById('editTelefone').addEventListener('input', (e) => {
+            let v = e.target.value.replace(/\D/g, "");
+            if (v.length > 11) v = v.substring(0, 11);
+            if (v.length > 10) {
+                e.target.value = v.replace(/^(\d{2})(\d{5})(\d{4})$/, "($1) $2-$3");
+            } else if (v.length > 2) {
+                e.target.value = v.replace(/^(\d{2})(\d{0,4})(\d{0,4})$/, "($1) $2-$3").replace(/-$/, "");
+            } else if (v.length > 0) {
+                e.target.value = v.replace(/^(\d{0,2})/, "($1");
+            }
+        });
+
+        function popularFiltroUnidades(dados) {
+            const select = document.getElementById('filtroUnidade');
+            const unidades = [...new Set(dados.map(d => d.local_ocorrencia).filter(Boolean))];
+            const valorAtual = select.value;
+            select.innerHTML = '<option value="TODAS">Todas as Unidades</option>';
+            unidades.sort().forEach(u => {
+                select.innerHTML += `<option value="${u}">${u}</option>`;
+            });
+            select.value = valorAtual;
+        }
+
+        function aplicarFiltros() {
+            const unidade = document.getElementById('filtroUnidade').value;
+            const status = document.getElementById('filtroStatus').value;
+            const mesRef = document.getElementById('filtroMes').value;
+
+            let filtrados = todosDados.filter(d => {
+                const matchUnidade = unidade === 'TODAS' || d.local_ocorrencia === unidade;
+                const matchStatus = status === 'TODOS' || normStatus(d.status_processamento) === normStatus(status);
+                
+                let matchData = true;
+                if (mesRef) {
+                    const dt = parseDataRegistro(d);
+                    matchData = dt ? `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}` === mesRef : false;
+                }
+
+                return matchUnidade && matchStatus && matchData;
+            });
+
+            atualizarKPIs(filtrados);
+            renderizarGraficos(filtrados);
+            renderizarTabela(filtrados);
+            dadosFiltradosAtuais = filtrados;
+        }
+
+        document.getElementById('filtroUnidade').addEventListener('change', aplicarFiltros);
+        document.getElementById('filtroStatus').addEventListener('change', aplicarFiltros);
+        document.getElementById('filtroMes').addEventListener('change', aplicarFiltros);
+
+        function atualizarKPIs(dados) {
+            const total = dados.length;
+            document.getElementById('kpiTotal').innerText = total;
+
+            // Pendentes: status PENDENTE (e registros sem status, que aparecem como pendentes na tabela)
+            const pendentes = dados.filter(d => {
+                const s = normStatus(d.status_processamento);
+                return s === 'pendente' || s === '';
+            }).length;
+            document.getElementById('kpiAdm').innerText = pendentes;
+
+            // Em Andamento: status EM ANÁLISE / Em Andamento
+            const emAndamento = dados.filter(d => {
+                const s = normStatus(d.status_processamento);
+                return s === 'em analise' || s === 'em andamento';
+            }).length;
+            document.getElementById('kpiAssist').innerText = emAndamento;
+
+            // Resolvidos (%): todos os concluídos sobre o total filtrado
+            const concluidos = dados.filter(d => normStatus(d.status_processamento) === 'concluido').length;
+            const eficiencia = total > 0 ? Math.round((concluidos / total) * 100) : 0;
+            document.getElementById('kpiEficiencia').innerText = eficiencia + '%';
+        }
+
+        function renderizarGraficos(dados) {
+            if (chartUnidades) chartUnidades.destroy();
+            if (chartDiaSemana) chartDiaSemana.destroy();
+            if (chartLinha) chartLinha.destroy();
+            if (chartPizzaStatus) chartPizzaStatus.destroy();
+            if (chartTipoUnidade) chartTipoUnidade.destroy();
+            if (chartNotificador) chartNotificador.destroy();
+            if (chartTipoDano) chartTipoDano.destroy();
+
+            const commonOptions = {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { labels: { font: { size: 11 } } }
+                }
+            };
+
+            // Paleta para tipos de evento (gráfico tipo x unidade)
+            const paleta = ['#2c3e50', '#27ae60', '#e67e22', '#e74c3c', '#3498db', '#9b59b6', '#16a085', '#f1c40f', '#34495e', '#7f8c8d'];
+
+            // ---------- 1) TENDÊNCIA TEMPORAL (linha) ----------
+            // Agrupa por dia usando chave ISO (aaaa-mm-dd) para ordenação cronológica correta.
+            const datasMap = {};
+            dados.forEach(d => {
+                const dt = parseDataRegistro(d);
+                if (!dt) return;
+                const chave = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+                datasMap[chave] = (datasMap[chave] || 0) + 1;
+            });
+            const datasOrdenadas = Object.keys(datasMap).sort();
+
+            chartLinha = new Chart(document.getElementById('chartLinha'), {
+                type: 'line',
+                data: {
+                    labels: datasOrdenadas.map(k => { const p = k.split('-'); return `${p[2]}/${p[1]}`; }),
+                    datasets: [{
+                        label: 'Eventos',
+                        data: datasOrdenadas.map(k => datasMap[k]),
+                        borderColor: '#2c3e50',
+                        tension: 0.3,
+                        fill: true,
+                        backgroundColor: 'rgba(44, 62, 80, 0.05)'
+                    }]
+                },
+                options: {
+                    ...commonOptions,
+                    scales: {
+                        x: { ticks: { autoSkip: true, maxTicksLimit: 14, maxRotation: 45, minRotation: 45 } },
+                        y: { beginAtZero: true, ticks: { precision: 0 } }
+                    }
+                }
+            });
+
+            // ---------- 2) STATUS DE PROCESSAMENTO (pizza) ----------
+            // Agrupa por status canônico: mescla variações de caixa/acento ("Concluído"+"CONCLUÍDO")
+            // e reúne em "Outros" os textos que não são status de verdade.
+            const coresStatus = {
+                'PENDENTE': '#f1c40f',
+                'EM ANÁLISE': '#3498db',
+                'CONCLUÍDO': '#2ecc71',
+                'CANCELADO': '#95a5a6',
+                'Outros': '#bdc3c7'
+            };
+            const ordemStatus = ['PENDENTE', 'EM ANÁLISE', 'CONCLUÍDO', 'CANCELADO', 'Outros'];
+            const statusContagem = {};
+            dados.forEach(d => {
+                const c = statusCanonico(d.status_processamento);
+                statusContagem[c] = (statusContagem[c] || 0) + 1;
+            });
+            const statusLabels = ordemStatus.filter(s => statusContagem[s] > 0);
+
+            chartPizzaStatus = new Chart(document.getElementById('chartPizzaStatus'), {
+                type: 'pie',
+                data: {
+                    labels: statusLabels,
+                    datasets: [{
+                        data: statusLabels.map(s => statusContagem[s]),
+                        backgroundColor: statusLabels.map(s => coresStatus[s])
+                    }]
+                },
+                options: { ...commonOptions, plugins: { legend: { position: 'bottom' } } }
+            });
+
+            // ---------- 3) NOTIFICAÇÕES POR UNIDADE (barra horizontal) ----------
+            const unidadesMap = dados.reduce((acc, d) => {
+                const u = d.local_ocorrencia || 'N/I';
+                acc[u] = (acc[u] || 0) + 1;
+                return acc;
+            }, {});
+            const unidadesOrdenadas = Object.entries(unidadesMap).sort((a, b) => b[1] - a[1]);
+
+            chartUnidades = new Chart(document.getElementById('chartUnidades'), {
+                type: 'bar',
+                data: {
+                    labels: unidadesOrdenadas.map(e => e[0]),
+                    datasets: [{ label: 'Qtd', data: unidadesOrdenadas.map(e => e[1]), backgroundColor: '#27ae60' }]
+                },
+                options: {
+                    ...commonOptions,
+                    indexAxis: 'y',
+                    plugins: { legend: { display: false } },
+                    scales: { x: { ticks: { precision: 0 } } }
+                }
+            });
+
+            // ---------- 4) NOTIFICAÇÕES POR DIA DA SEMANA (barra) ----------
+            // Usa o campo dia_semana já gravado no banco; se faltar, deriva da data do registro.
+            const nomesDiasJS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+            const ordemNomes = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
+            const contagemDias = { 'Segunda': 0, 'Terça': 0, 'Quarta': 0, 'Quinta': 0, 'Sexta': 0, 'Sábado': 0, 'Domingo': 0 };
+            dados.forEach(d => {
+                let nome = normalizarDiaSemana(d.dia_semana);
+                if (!nome) { const dt = parseDataRegistro(d); if (dt) nome = nomesDiasJS[dt.getDay()]; }
+                if (nome && contagemDias[nome] !== undefined) contagemDias[nome]++;
+            });
+
+            chartDiaSemana = new Chart(document.getElementById('chartDiaSemana'), {
+                type: 'bar',
+                data: {
+                    labels: ordemNomes,
+                    datasets: [{
+                        label: 'Notificações',
+                        data: ordemNomes.map(n => contagemDias[n]),
+                        backgroundColor: '#3498db'
+                    }]
+                },
+                options: {
+                    ...commonOptions,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+                }
+            });
+
+            // ---------- 5) NOTIFICAÇÕES POR TIPO DE EVENTO E UNIDADE (barra empilhada) ----------
+            const tiposSet = [...new Set(dados.map(d => d.tipo_evento || 'Outros'))];
+            const unidadesLabels = Object.keys(unidadesMap);
+            const datasetsTipoUnidade = tiposSet.map((tipo, idx) => ({
+                label: tipo,
+                backgroundColor: paleta[idx % paleta.length],
+                data: unidadesLabels.map(uni =>
+                    dados.filter(d => (d.local_ocorrencia || 'N/I') === uni && (d.tipo_evento || 'Outros') === tipo).length
+                )
+            }));
+
+            chartTipoUnidade = new Chart(document.getElementById('chartTipoUnidade'), {
+                type: 'bar',
+                data: { labels: unidadesLabels, datasets: datasetsTipoUnidade },
+                options: {
+                    ...commonOptions,
+                    plugins: { legend: { position: 'bottom', labels: { font: { size: 10 } } } },
+                    scales: {
+                        x: { stacked: true },
+                        y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } }
+                    }
+                }
+            });
+
+            // ---------- 6) NOTIFICAÇÕES POR NOTIFICADO (barra horizontal) ----------
+            // O campo tem alta cardinalidade (nomes livres); mostramos só os principais + "Outros".
+            const notificadoMap = dados.reduce((acc, d) => {
+                const n = d.nome_notificado_setor || 'Não informado';
+                acc[n] = (acc[n] || 0) + 1;
+                return acc;
+            }, {});
+            const todosNotificados = Object.entries(notificadoMap).sort((a, b) => b[1] - a[1]);
+            const TOP_N = 15;
+            const topNotificados = todosNotificados.slice(0, TOP_N);
+            const restoNotificados = todosNotificados.slice(TOP_N);
+            const labelsNotif = topNotificados.map(e => e[0]);
+            const dataNotif = topNotificados.map(e => e[1]);
+            if (restoNotificados.length > 0) {
+                const somaResto = restoNotificados.reduce((s, e) => s + e[1], 0);
+                labelsNotif.push(`Outros (${restoNotificados.length})`);
+                dataNotif.push(somaResto);
+            }
+
+            chartNotificador = new Chart(document.getElementById('chartNotificador'), {
+                type: 'bar',
+                data: {
+                    labels: labelsNotif,
+                    datasets: [{ label: 'Notificações', data: dataNotif, backgroundColor: '#e67e22' }]
+                },
+                options: {
+                    ...commonOptions,
+                    indexAxis: 'y',
+                    plugins: {
+                        legend: { display: false },
+                        title: { display: true, text: `Top ${TOP_N} (de ${todosNotificados.length} notificados)`, font: { size: 11 }, color: '#7f8c8d' }
+                    },
+                    scales: {
+                        x: { beginAtZero: true, ticks: { precision: 0 } },
+                        y: {
+                            ticks: {
+                                font: { size: 11 },
+                                autoSkip: false,
+                                callback: function (value) {
+                                    const l = this.getLabelForValue(value);
+                                    return l.length > 30 ? l.slice(0, 29) + '…' : l;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // ---------- 7) NOTIFICAÇÕES POR TIPO DE DANO (barra horizontal) ----------
+            const ordemDano = [
+                'Circunstância de risco',
+                'Evento sem dano — não atingiu o paciente',
+                'Evento sem dano — atingiu o paciente',
+                'Evento com dano leve',
+                'Evento com dano moderado',
+                'Evento com dano grave'
+            ];
+            const coresDano = ['#3498db', '#1abc9c', '#27ae60', '#f1c40f', '#e67e22', '#e74c3c'];
+            const danoContagem = {};
+            dados.forEach(d => {
+                if (d.tipo_dano) danoContagem[d.tipo_dano] = (danoContagem[d.tipo_dano] || 0) + 1;
+            });
+            // Mantém a ordem de gravidade; inclui categorias fora da lista, se houver
+            const danoLabels = ordemDano.filter(t => danoContagem[t] > 0)
+                .concat(Object.keys(danoContagem).filter(t => !ordemDano.includes(t)));
+
+            chartTipoDano = new Chart(document.getElementById('chartTipoDano'), {
+                type: 'bar',
+                data: {
+                    labels: danoLabels,
+                    datasets: [{
+                        label: 'Notificações',
+                        data: danoLabels.map(t => danoContagem[t]),
+                        backgroundColor: danoLabels.map(t => coresDano[ordemDano.indexOf(t)] || '#95a5a6')
+                    }]
+                },
+                options: {
+                    ...commonOptions,
+                    indexAxis: 'y',
+                    plugins: { legend: { display: false } },
+                    scales: { x: { beginAtZero: true, ticks: { precision: 0 } }, y: { ticks: { font: { size: 11 } } } }
+                }
+            });
+        }
+
+        // Exporta UM gráfico em PNG (fundo branco garantido pelo plugin)
+        window.exportarGrafico = function (chaveGrafico, nomeArquivo) {
+            const chart = getRegistroGraficos()[chaveGrafico];
+            if (!chart) { alert('Gráfico ainda não carregado.'); return; }
+            const link = document.createElement('a');
+            link.href = chart.toBase64Image('image/png', 1.0);
+            link.download = `${nomeArquivo}_${new Date().toISOString().slice(0, 10)}.png`;
+            link.click();
+        };
+
+        // Exporta TODOS os gráficos em um único PDF (um por página, paisagem)
+        function exportarPDF() {
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF('l', 'mm', 'a4');
+            const pageW = pdf.internal.pageSize.getWidth();
+            const pageH = pdf.internal.pageSize.getHeight();
+            const margem = 15;
+
+            const lista = [
+                { chart: chartLinha,         titulo: 'Tendência Temporal (Ocorrências/Dia)' },
+                { chart: chartPizzaStatus,   titulo: 'Status de Processamento' },
+                { chart: chartUnidades,      titulo: 'Notificações por Unidade' },
+                { chart: chartDiaSemana,     titulo: 'Notificações por Dia da Semana' },
+                { chart: chartTipoUnidade,   titulo: 'Notificações por Tipo de Evento e Unidade' },
+                { chart: chartNotificador,   titulo: 'Notificações por Notificado' },
+                { chart: chartTipoDano,      titulo: 'Notificações por Tipo de Dano' }
+            ].filter(item => item.chart);
+
+            if (lista.length === 0) { alert('Nenhum gráfico disponível para exportar.'); return; }
+
+            const filtroUnidade = document.getElementById('filtroUnidade').value;
+            const filtroMes = document.getElementById('filtroMes').value || 'Todos os períodos';
+
+            lista.forEach((item, i) => {
+                if (i > 0) pdf.addPage();
+
+                // Cabeçalho da página
+                pdf.setFontSize(15);
+                pdf.setTextColor(44, 62, 80);
+                pdf.text(item.titulo, margem, margem);
+
+                pdf.setFontSize(9);
+                pdf.setTextColor(120, 120, 120);
+                pdf.text(`Unidade: ${filtroUnidade}  |  Período: ${filtroMes}  |  Gerado em ${new Date().toLocaleString('pt-BR')}`, margem, margem + 6);
+
+                // Imagem do gráfico, proporção preservada
+                const img = item.chart.toBase64Image('image/png', 1.0);
+                const cw = item.chart.width;
+                const ch = item.chart.height;
+                let w = pageW - margem * 2;
+                let h = w * (ch / cw);
+                const maxH = pageH - margem * 2 - 14;
+                if (h > maxH) { h = maxH; w = h * (cw / ch); }
+                const x = (pageW - w) / 2;
+                pdf.addImage(img, 'PNG', x, margem + 12, w, h);
+            });
+
+            pdf.save(`graficos_notificacoes_${new Date().toISOString().slice(0, 10)}.pdf`);
+        }
+
+        // Exporta a tabela de acompanhamento em CSV (compatível com Excel/BR)
+        function exportarCSV() {
+            if (!dadosFiltradosAtuais || dadosFiltradosAtuais.length === 0) {
+                alert('Não há registros para exportar.');
+                return;
+            }
+            const cabecalho = ['Data', 'Unidade', 'Tipo de Evento', 'Notificante', 'Telefone', 'Status',
+                'Problema Principal', 'Método/Processo', 'Mão de Obra/Pessoas', 'Máquina/Sistema',
+                'Material/Documento', 'Medição/Monitoramento', 'Causa Raiz Provável', 'Ação de Melhoria',
+                'Observações Admin', 'Data Tratativa'];
+            const linhas = dadosFiltradosAtuais.map(d => {
+                const _dt = parseDataRegistro(d);
+                const dataFmt = _dt ? dataParaBR(_dt) : '';
+                return [
+                    dataFmt,
+                    d.local_ocorrencia || '',
+                    d.tipo_evento || '',
+                    d.nome_notificante || '',
+                    d.telefone_notificado || '',
+                    d.status_processamento || 'PENDENTE',
+                    d.problema_principal || '',
+                    d.causa_metodo || '',
+                    d.causa_mao_obra || '',
+                    d.causa_maquina || '',
+                    d.causa_material || '',
+                    d.causa_medicao || '',
+                    d.causa_raiz || '',
+                    d.acao_melhoria || '',
+                    (d.comentarios_admin || '').replace(/\r?\n/g, ' '),
+                    d.data_tratativa || ''
+                ].map(campo => `"${String(campo).replace(/"/g, '""').replace(/\r?\n/g, ' ')}"`).join(';');
+            });
+            // BOM para acentuação correta no Excel
+            const csv = '\uFEFF' + [cabecalho.join(';'), ...linhas].join('\r\n');
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `tabela_notificacoes_${new Date().toISOString().slice(0, 10)}.csv`;
+            link.click();
+            URL.revokeObjectURL(link.href);
+        }
+
+        document.getElementById('btnExportarPDF').addEventListener('click', exportarPDF);
+        document.getElementById('btnExportarCSV').addEventListener('click', exportarCSV);
+
+        // Converte a data de um registro em objeto Date, lidando com os formatos reais do banco:
+        // data_ocorrencia em dd/mm/aaaa (e, por garantia, aaaa-mm-dd) e carimbo_data_hora em M/d/aaaa (US).
+        function parseDataRegistro(d) {
+            const v = d && d.data_ocorrencia ? String(d.data_ocorrencia).trim() : '';
+            let m = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);   // dd/mm/aaaa
+            if (m) { const dt = new Date(+m[3], +m[2] - 1, +m[1]); if (!isNaN(dt)) return dt; }
+            m = v.match(/^(\d{4})-(\d{2})-(\d{2})/);             // aaaa-mm-dd
+            if (m) { const dt = new Date(+m[1], +m[2] - 1, +m[3]); if (!isNaN(dt)) return dt; }
+            if (d && d.carimbo_data_hora) {                      // fallback: carimbo (US M/d/aaaa h:mm:ss)
+                const dt = new Date(d.carimbo_data_hora);
+                if (!isNaN(dt)) return dt;
+            }
+            return null;
+        }
+
+        function dataParaBR(dt) {
+            return `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}/${dt.getFullYear()}`;
+        }
+
+        // Normaliza o nome do dia da semana (o campo dia_semana já existe no banco)
+        function normalizarDiaSemana(s) {
+            if (!s) return null;
+            const t = String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            if (t.startsWith('seg')) return 'Segunda';
+            if (t.startsWith('ter')) return 'Terça';
+            if (t.startsWith('qua')) return 'Quarta';
+            if (t.startsWith('qui')) return 'Quinta';
+            if (t.startsWith('sex')) return 'Sexta';
+            if (t.startsWith('sab')) return 'Sábado';
+            if (t.startsWith('dom')) return 'Domingo';
+            return null;
+        }
+
+        // Normaliza status para comparação insensível a maiúsculas/acentos
+        // ("Concluído", "CONCLUÍDO", "concluido" → "concluido")
+        function normStatus(s) {
+            return String(s == null ? '' : s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+        }
+
+        // Mapeia o status gravado (em qualquer caixa/acentuação) para a opção exata do select.
+        function statusParaOpcao(s) {
+            const n = normStatus(s);
+            if (n === 'concluido') return 'CONCLUÍDO';
+            if (n === 'em analise') return 'EM ANÁLISE';
+            if (n === 'cancelado') return 'CANCELADO';
+            return 'PENDENTE';
+        }
+
+        // Classifica em status canônico para o gráfico de pizza.
+        // Mescla variações de caixa/acento e joga textos que não são status em "Outros".
+        function statusCanonico(s) {
+            const n = normStatus(s);
+            if (n === 'pendente' || n === '') return 'PENDENTE';
+            if (n === 'em analise' || n === 'em andamento') return 'EM ANÁLISE';
+            if (n === 'concluido') return 'CONCLUÍDO';
+            if (n === 'cancelado') return 'CANCELADO';
+            return 'Outros';
+        }
+
+        // Timestamp do cadastro (em ms) para ordenar a tabela — mais recentes primeiro.
+        // Lida com carimbo_data_hora em formato americano ("M/d/aaaa h:mm:ss") ou ISO,
+        // com carimbo_tempo ({seconds}) e, na falta, com a data da ocorrência.
+        function tsRegistro(d) {
+            const c = d.carimbo_data_hora;
+            if (c != null) {
+                if (typeof c === 'object') {
+                    if (typeof c.seconds === 'number') return c.seconds * 1000;
+                    if (typeof c.toDate === 'function') { const dt = c.toDate(); if (!isNaN(dt)) return dt.getTime(); }
+                } else {
+                    const dt = new Date(c);
+                    if (!isNaN(dt)) return dt.getTime();
+                }
+            }
+            if (d.carimbo_tempo && typeof d.carimbo_tempo.seconds === 'number') return d.carimbo_tempo.seconds * 1000;
+            const dd = parseDataRegistro(d);
+            return dd ? dd.getTime() : 0;
+        }
+
+        // Coluna Data: usa a data do registro nos formatos reais; "---" se não houver data válida.
+        function formatarDataLinha(d) {
+            const dt = parseDataRegistro(d);
+            return dt ? dataParaBR(dt) : '---';
+        }
+
+        // Escapa caracteres que poderiam quebrar a estrutura HTML da célula
+        // (um '<', '>' ou aspas em um registro deslocaria as colunas seguintes).
+        function escTexto(v) {
+            if (v == null) return '';
+            return String(v)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function renderizarTabela(dados) {
+            const tbody = document.querySelector('#tabelaEventos tbody');
+            document.getElementById('contadorTabela').innerText = `Exibindo ${dados.length} registros`;
+            tbody.innerHTML = '';
+
+            // Ordena pela DATA da ocorrência (coluna Data) — decrescente, para TODOS os status.
+            // Empate de data: cadastro mais recente primeiro. Sem data válida vai para o fim.
+            const ordenados = [...dados].sort((a, b) => {
+                const da = parseDataRegistro(a), db_ = parseDataRegistro(b);
+                const ta = da ? da.getTime() : -Infinity;
+                const tb = db_ ? db_.getTime() : -Infinity;
+                if (tb !== ta) return tb - ta;
+                return tsRegistro(b) - tsRegistro(a);
+            });
+
+            ordenados.forEach(d => {
+                const dataFormatada = formatarDataLinha(d);
+                const _st = normStatus(d.status_processamento);
+                const statusColor = _st === 'concluido' ? 'bg-success' :
+                                   _st === 'em analise' ? 'bg-warning text-dark' :
+                                   _st === 'cancelado' ? 'bg-secondary' : 'bg-info';
+                
+                const telOriginal = d.telefone_notificado || "";
+                const telMascara = aplicarMascaraTelefone(telOriginal);
+
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="small fw-bold text-nowrap">${escTexto(dataFormatada)}</td>
+                    <td class="small">${escTexto(d.local_ocorrencia) || '-'}</td>
+                    <td class="small">${escTexto(d.tipo_evento) || '-'}</td>
+                    <td class="small">${escTexto(d.nome_notificante) || '-'}</td>
+                    <td class="small">${escTexto(d.nome_notificado_setor) || '-'}</td>
+                    <td class="small text-nowrap">${escTexto(telMascara)}</td>
+                    <td><span class="status-badge ${statusColor} text-white">${escTexto(d.status_processamento) || 'PENDENTE'}</span></td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-primary" onclick="abrirModalTratativa('${d.id}')">
+                            Tratar
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Descrições de cada Tipo de Dano (atualizam dinamicamente abaixo do dropdown)
+        const DESCRICOES_TIPO_DANO = {
+            'Circunstância de risco': 'Quando existe uma condição insegura ou risco potencial, mas ainda não houve falha direta ou contato com o paciente.',
+            'Evento sem dano — não atingiu o paciente': 'Quando a falha aconteceu, mas foi identificada/barreirada antes de chegar ao paciente.',
+            'Evento sem dano — atingiu o paciente': 'Quando a falha chegou ao paciente, mas não causou dano clínico identificado.',
+            'Evento com dano leve': 'Quando causou dano pequeno, temporário, sem repercussão importante e sem necessidade de intervenção complexa.',
+            'Evento com dano moderado': 'Quando exigiu intervenção, maior monitoramento, mudança de conduta, prolongamento do cuidado ou impacto clínico relevante.',
+            'Evento com dano grave': 'Quando gerou dano importante, risco de morte, sequela, necessidade de suporte intensivo ou óbito relacionado ao evento.'
+        };
+        function atualizarDescricaoTipoDano() {
+            const sel = document.getElementById('editTipoDano').value;
+            document.getElementById('editTipoDanoDesc').textContent = DESCRICOES_TIPO_DANO[sel] || '';
+        }
+        document.getElementById('editTipoDano').addEventListener('change', atualizarDescricaoTipoDano);
+
+        let tratativaAtual = null;
+
+        window.abrirModalTratativa = function(id) {
+            const d = todosDados.find(x => x.id === id) || {};
+            tratativaAtual = d;
+            // Botão de imprimir aparece se o caso já tiver sido tratado; some até salvar nos novos
+            document.getElementById('msgTratativa').textContent = '';
+            document.getElementById('btnImprimirTratativa').classList.toggle('d-none', !d.data_tratativa);
+
+            // Contexto do evento registrado (somente leitura)
+            const dataFmt = formatarDataLinha(d);
+            const esc = (v) => (v == null ? '' : String(v).replace(/</g, '&lt;').replace(/>/g, '&gt;'));
+            document.getElementById('ctxEvento').innerHTML = `
+                <div><strong>Data:</strong> ${esc(dataFmt)} &nbsp;|&nbsp; <strong>Dia:</strong> ${esc(d.dia_semana || '-')} &nbsp;|&nbsp; <strong>Unidade:</strong> ${esc(d.local_ocorrencia || '-')}</div>
+                <div><strong>Tipo de Evento:</strong> ${esc(d.tipo_evento || '-')}</div>
+                <div><strong>Notificante:</strong> ${esc(d.nome_notificante || '-')} &nbsp;|&nbsp; <strong>Status atual:</strong> ${esc(d.status_processamento || 'PENDENTE')}</div>
+                ${d.descricao_evento ? `<div class="mt-1"><strong>Descrição:</strong> ${esc(d.descricao_evento)}</div>` : ''}
+                ${d.implicacoes ? `<div class="mt-1"><strong>Implicações:</strong> ${esc(d.implicacoes)}</div>` : ''}
+                ${d.acoes_imediatas ? `<div class="mt-1"><strong>Ações imediatas:</strong> ${esc(d.acoes_imediatas)}</div>` : ''}
+            `;
+
+            document.getElementById('editDocId').value = id;
+            // Normaliza o status para a opção correta do select (evita ficar em branco e virar PENDENTE ao salvar)
+            document.getElementById('editStatus').value = statusParaOpcao(d.status_processamento);
+            document.getElementById('editComentario').value = d.comentarios_admin || '';
+            document.getElementById('editNotificadoNome').value = d.nome_notificado_setor || '';
+
+            // Campos de análise de causa raiz
+            document.getElementById('editProblema').value = d.problema_principal || d.tipo_evento || '';
+            document.getElementById('editMetodo').value = d.causa_metodo || '';
+            document.getElementById('editMaoObra').value = d.causa_mao_obra || '';
+            document.getElementById('editMaquina').value = d.causa_maquina || '';
+            document.getElementById('editMaterial').value = d.causa_material || '';
+            document.getElementById('editMedicao').value = d.causa_medicao || '';
+            document.getElementById('editCausaRaiz').value = d.causa_raiz || '';
+            document.getElementById('editAcaoMelhoria').value = d.acao_melhoria || '';
+
+            // Tipo de Dano + descrição dinâmica
+            document.getElementById('editTipoDano').value = d.tipo_dano || '';
+            atualizarDescricaoTipoDano();
+
+            const telInput = document.getElementById('editTelefone');
+            telInput.value = d.telefone_notificado || '';
+            telInput.dispatchEvent(new Event('input'));
+
+            new bootstrap.Modal(document.getElementById('modalTratativa')).show();
+        };
+
+        document.getElementById('btnSalvarTratativa').addEventListener('click', async () => {
+            const id = document.getElementById('editDocId').value;
+            const docRef = doc(db, COLECAO, id);
+
+            const dadosTratativa = {
+                status_processamento: document.getElementById('editStatus').value,
+                comentarios_admin: document.getElementById('editComentario').value,
+                telefone_notificado: document.getElementById('editTelefone').value,
+                // Análise de causa raiz (Ishikawa / 6M)
+                problema_principal: document.getElementById('editProblema').value,
+                causa_metodo: document.getElementById('editMetodo').value,
+                causa_mao_obra: document.getElementById('editMaoObra').value,
+                causa_maquina: document.getElementById('editMaquina').value,
+                causa_material: document.getElementById('editMaterial').value,
+                causa_medicao: document.getElementById('editMedicao').value,
+                causa_raiz: document.getElementById('editCausaRaiz').value,
+                acao_melhoria: document.getElementById('editAcaoMelhoria').value,
+                tipo_dano: document.getElementById('editTipoDano').value,
+                data_tratativa: new Date().toLocaleString('pt-BR')
+            };
+
+            try {
+                await updateDoc(docRef, dadosTratativa);
+                // Reflete o que foi salvo no registro em memória (para o PDF)
+                if (tratativaAtual) Object.assign(tratativaAtual, dadosTratativa);
+                document.getElementById('msgTratativa').textContent = '✓ Tratativa salva. Você já pode imprimir/exportar em PDF.';
+                document.getElementById('btnImprimirTratativa').classList.remove('d-none');
+            } catch (error) {
+                console.error("Erro ao salvar:", error);
+                document.getElementById('msgTratativa').textContent = '';
+                alert("Erro ao atualizar documento.");
+            }
+        });
+
+        // Gera o PDF da tratativa (contexto do evento + análise de causa raiz)
+        document.getElementById('btnImprimirTratativa').addEventListener('click', () => {
+            const d = tratativaAtual || {};
+            const val = (elId) => (document.getElementById(elId).value || '').trim();
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            const pageW = pdf.internal.pageSize.getWidth();
+            const pageH = pdf.internal.pageSize.getHeight();
+            const m = 15, larg = pageW - m * 2;
+            let y = m;
+
+            const quebra = (h) => { if (y + h > pageH - m) { pdf.addPage(); y = m; } };
+            const titulo = (t) => { quebra(10); pdf.setFont(undefined, 'bold'); pdf.setFontSize(14); pdf.setTextColor(44, 62, 80); pdf.text(t, m, y); y += 8; };
+            const secao = (t) => { quebra(8); pdf.setFont(undefined, 'bold'); pdf.setFontSize(11); pdf.setTextColor(39, 174, 96); pdf.text(t, m, y); y += 6; };
+            const campo = (label, valor) => {
+                valor = (valor == null ? '' : String(valor)).trim() || '—';
+                quebra(7);
+                pdf.setFont(undefined, 'bold'); pdf.setFontSize(9.5); pdf.setTextColor(90, 90, 90);
+                pdf.text(label, m, y); y += 5;
+                pdf.setFont(undefined, 'normal'); pdf.setFontSize(10); pdf.setTextColor(20, 20, 20);
+                pdf.splitTextToSize(valor, larg).forEach(l => { quebra(5); pdf.text(l, m, y); y += 5; });
+                y += 2;
+            };
+
+            titulo('Tratativa de Evento — Análise de Causa Raiz');
+            pdf.setFont(undefined, 'normal'); pdf.setFontSize(8); pdf.setTextColor(120, 120, 120);
+            pdf.text(`Emitido em ${new Date().toLocaleString('pt-BR')}`, m, y); y += 8;
+
+            secao('Evento Registrado');
+            campo('Data da ocorrência', formatarDataLinha(d));
+            campo('Unidade', d.local_ocorrencia);
+            campo('Tipo de evento', d.tipo_evento);
+            campo('Notificante', d.nome_notificante);
+            campo('Notificado', d.nome_notificado_setor);
+            campo('Telefone do notificado', val('editTelefone'));
+            campo('Status', val('editStatus'));
+
+            secao('Classificação');
+            campo('Problema principal', val('editProblema'));
+            const tipoDano = val('editTipoDano');
+            campo('Tipo de dano', tipoDano + (DESCRICOES_TIPO_DANO[tipoDano] ? ' — ' + DESCRICOES_TIPO_DANO[tipoDano] : ''));
+
+            secao('Análise de Causa Raiz (Ishikawa / 6M)');
+            campo('Método / Processo', val('editMetodo'));
+            campo('Mão de obra / Pessoas', val('editMaoObra'));
+            campo('Máquina / Sistema', val('editMaquina'));
+            campo('Material / Documento', val('editMaterial'));
+            campo('Medição / Monitoramento', val('editMedicao'));
+
+            secao('Conclusão');
+            campo('Causa raiz provável', val('editCausaRaiz'));
+            campo('Ação de melhoria', val('editAcaoMelhoria'));
+            campo('Observações / Conduta', val('editComentario'));
+
+            const nomeArq = `tratativa_${(d.local_ocorrencia || 'evento').replace(/[^\w]+/g, '_')}_${new Date().toISOString().slice(0, 10)}.pdf`;
+            pdf.save(nomeArq);
+        });
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
